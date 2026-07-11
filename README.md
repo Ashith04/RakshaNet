@@ -1,6 +1,8 @@
-# Maritime Surveillance Engine
-
-Real-time AIS-based vessel surveillance system that detects malicious/illegal maritime activity at 50,000+ messages/second on a single machine.
+# RAKSHA NET — Real-Time Maritime Surveillance Engine
+ 
+Real-time AIS-based vessel surveillance system that detects illegal fishing,
+AIS blackouts, and maritime violations at **50,000+ messages/second on a
+single machine** — with zero heavy distributed pipelines.
 
 ## Architecture
 
