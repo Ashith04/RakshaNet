@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Circle, useMap, GeoJSON } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Circle, Rectangle, useMap, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
 function MapController({ selectedMmsi, vessels }) {
   const map = useMap();
   useEffect(() => {
     if (selectedMmsi) {
-      const v = vessels.find(v => v.mmsi === selectedMmsi);
+      const v = vessels.find(v => String(v.mmsi) === String(selectedMmsi));
       if (v) {
         map.flyTo([v.lat, v.lon], 10, { animate: true });
       }
@@ -15,10 +15,11 @@ function MapController({ selectedMmsi, vessels }) {
   return null;
 }
 
-export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
+export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectVessel }) {
   const [config, setConfig] = useState(null);
   const [indiaGeoJson, setIndiaGeoJson] = useState(null);
-  const selectedVessel = vessels.find(v => v.mmsi === selectedMmsi);
+  const [showBuckets, setShowBuckets] = useState(false);
+  const selectedVessel = vessels.find(v => String(v.mmsi) === String(selectedMmsi));
 
   useEffect(() => {
     fetch('http://localhost:8080/api/config')
@@ -31,6 +32,13 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
       .then(data => setIndiaGeoJson(data))
       .catch(err => console.log("India GeoJSON not available yet"));
   }, []);
+
+  const getBucketColor = (score) => {
+    if (score >= 80) return '#F03A2F'; // Red
+    if (score >= 50) return '#FF5722'; // Orange
+    if (score >= 20) return '#FFB703'; // Yellow
+    return '#00C853'; // Green
+  };
 
   const getVesselColor = (status) => {
     switch (status) {
@@ -47,6 +55,23 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
 
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
+      <div style={{ position: 'absolute', top: 20, left: 60, zIndex: 1000 }}>
+        <button 
+          onClick={() => setShowBuckets(!showBuckets)}
+          style={{
+            background: '#000',
+            color: '#FFF',
+            border: '2px solid #FFF',
+            padding: '8px 12px',
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            boxShadow: '2px 2px 0px rgba(0,0,0,0.5)'
+          }}
+        >
+          {showBuckets ? 'DISABLE THREAT BUCKETS' : 'ENABLE THREAT BUCKETS'}
+        </button>
+      </div>
       <MapContainer 
         center={[15.0, 75.0]} 
         zoom={5} 
@@ -66,6 +91,26 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
             style={{ color: '#000', weight: 1.5, fillOpacity: 0, opacity: 0.5 }} 
           />
         )}
+        
+        {showBuckets && buckets.map(b => {
+          const color = getBucketColor(b.threat_score);
+          return (
+            <Rectangle
+              key={b.bucket_id}
+              bounds={[[b.lat_min, b.lon_min], [b.lat_max, b.lon_max]]}
+              pathOptions={{ color, fillColor: color, weight: 1, fillOpacity: 0.15 }}
+            >
+              <Popup className="tactical-popup">
+                <div className="popup-content">
+                  <div className="popup-header">BUCKET {b.bucket_id}</div>
+                  <div className="popup-stat"><span>SHIPS:</span> {b.ships}</div>
+                  <div className="popup-stat"><span>ALERTS:</span> {b.alert_count}</div>
+                  <div className="popup-stat"><span>THREAT SCORE:</span> <span style={{color, fontWeight: 'bold'}}>{b.threat_score}</span></div>
+                </div>
+              </Popup>
+            </Rectangle>
+          );
+        })}
         
         {config?.zones?.map((zone, idx) => {
           const positions = zone.polygon.map(coord => [coord[1], coord[0]]);
@@ -137,8 +182,8 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
             );
           }
           
-          // Render predicted path and crossing point for border warning
-          if (v.threat_data?.type === 'border_warning' && v.threat_data.crossing_point) {
+          // Render predicted path and crossing point for border or zone warning
+          if ((v.threat_data?.type === 'border_warning' || v.threat_data?.type === 'zone_prediction') && v.threat_data.crossing_point) {
             const crossLat = v.threat_data.crossing_point[1];
             const crossLon = v.threat_data.crossing_point[0];
             elements.push(
@@ -146,7 +191,7 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
                 key={`path-${v.mmsi}`}
                 positions={[[v.lat, v.lon], [crossLat, crossLon]]}
                 pathOptions={{
-                  color: '#F03A2F',
+                  color: v.threat_data.type === 'border_warning' ? '#F03A2F' : '#FFB703',
                   weight: 2,
                   dashArray: '4 4'
                 }}
@@ -159,14 +204,16 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
                 radius={5}
                 pathOptions={{
                   color: '#000000',
-                  fillColor: '#F03A2F',
+                  fillColor: v.threat_data.type === 'border_warning' ? '#F03A2F' : '#FFB703',
                   fillOpacity: 1.0,
                   weight: 1.5
                 }}
               >
                 <Popup>
                   <div style={{fontFamily: 'monospace', fontSize: '0.75rem', padding: '0.25rem'}}>
-                    <strong style={{color: '#F03A2F'}}>BORDER CROSSING WARNING</strong><br/>
+                    <strong style={{color: v.threat_data.type === 'border_warning' ? '#F03A2F' : '#FFB703'}}>
+                      {v.threat_data.type === 'border_warning' ? 'BORDER CROSSING WARNING' : 'ZONE INTRUSION PREDICTED'}
+                    </strong><br/>
                     <strong>VESSEL:</strong> {v.ship_name}<br/>
                     <strong>CROSSING IN:</strong> {v.threat_data.remaining_time.toFixed(0)} seconds
                   </div>
@@ -176,7 +223,7 @@ export default function MapView({ vessels, selectedMmsi, onSelectVessel }) {
           }
           
           // Main vessel dot
-          if (v.mmsi === selectedMmsi) {
+          if (String(v.mmsi) === String(selectedMmsi)) {
             elements.push(
               <CircleMarker
                 key={`highlight-${v.mmsi}`}

@@ -13,6 +13,7 @@ import './App.css';
 export default function App() {
   const [vessels, setVessels] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [buckets, setBuckets] = useState([]);
   const [isBooting, setIsBooting] = useState(true);
   const [viewMode, setViewMode] = useState('threat');
   const [selectedMmsi, setSelectedMmsi] = useState(null);
@@ -42,9 +43,16 @@ export default function App() {
       });
     };
 
+    const wsBuckets = new WebSocket('ws://localhost:8080/ws/buckets');
+    wsBuckets.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setBuckets(data);
+    };
+
     return () => {
       wsVessels.close();
       wsAlerts.close();
+      wsBuckets.close();
     };
   }, [isBooting]);
 
@@ -113,6 +121,7 @@ export default function App() {
               {viewMode === 'map' && (
                 <MapView 
                   vessels={vessels} 
+                  buckets={buckets}
                   selectedMmsi={selectedMmsi}
                   onSelectVessel={(mmsi) => {
                     setSelectedMmsi(mmsi);
