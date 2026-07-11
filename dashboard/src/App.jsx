@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import MapView from './components/MapView';
 import StatsBar from './components/StatsBar';
 import AlertFeed from './components/AlertFeed';
+import DataTableView from './components/DataTableView';
 
 const WS_BASE = 'ws://localhost:8080/ws';
 const API_BASE = 'http://localhost:8080/api';
@@ -12,6 +13,7 @@ function App() {
   const [stats, setStats] = useState(null);
   const [config, setConfig] = useState(null);
   const [wsStatus, setWsStatus] = useState({ vessels: false, alerts: false });
+  const [viewMode, setViewMode] = useState('map');
 
   const vesselWsRef = useRef(null);
   const alertWsRef = useRef(null);
@@ -148,17 +150,27 @@ function App() {
 
   return (
     <div className="app-container">
-      <MapView
-        vessels={vessels}
-        config={config}
-      />
+      {viewMode === 'map' ? (
+        <MapView
+          vessels={vessels}
+          config={config}
+        />
+      ) : (
+        <DataTableView vessels={vessels} />
+      )}
+      
       <StatsBar
         stats={stats}
         wsStatus={wsStatus}
+        viewMode={viewMode}
+        onToggleView={() => setViewMode(v => v === 'map' ? 'data' : 'map')}
       />
-      <AlertFeed
-        alerts={alerts}
-      />
+      
+      {viewMode === 'map' && (
+        <AlertFeed
+          alerts={alerts}
+        />
+      )}
     </div>
   );
 }

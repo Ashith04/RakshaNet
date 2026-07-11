@@ -58,7 +58,7 @@ function VesselMarker({ vessel }) {
   return (
     <CircleMarker
       center={[vessel.lat, vessel.lon]}
-      radius={isAlert ? 7 : 5}
+      radius={isAlert ? 5 : 3}
       pathOptions={{
         fillColor: color,
         fillOpacity: isAlert ? 0.9 : 0.7,

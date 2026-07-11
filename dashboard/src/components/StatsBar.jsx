@@ -13,7 +13,7 @@ function formatLatency(us) {
   return `${Math.round(us)}µs`;
 }
 
-function StatsBar({ stats, wsStatus }) {
+function StatsBar({ stats, wsStatus, viewMode, onToggleView }) {
   const [prevStats, setPrevStats] = useState(null);
 
   useEffect(() => {
@@ -70,6 +70,25 @@ function StatsBar({ stats, wsStatus }) {
         <span className="pulse-dot" />
         {source}
       </div>
+
+      <button 
+        onClick={onToggleView} 
+        style={{
+          marginLeft: '16px',
+          padding: '6px 12px',
+          background: 'rgba(255,255,255,0.1)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          color: '#fff',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontWeight: '500',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+        onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+      >
+        Switch to {viewMode === 'map' ? 'Data View' : 'Map View'}
+      </button>
     </div>
   );
 }
