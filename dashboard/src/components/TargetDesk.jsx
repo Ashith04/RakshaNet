@@ -5,16 +5,196 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
   const [searchQuery, setSearchQuery] = useState('');
   
   // Find highest risk vessel or search match
-  const targetVessel = vessels.find(v => v.mmsi === selectedMmsi) || vessels.find(v => v.mmsi.toString().includes(searchQuery)) || vessels.find(v => v.status === 'critical' || v.status === 'warning') || vessels[0];
+  const targetVessel = vessels.find(v => v.mmsi === selectedMmsi) || 
+                       vessels.find(v => v.mmsi.toString().includes(searchQuery)) || 
+                       vessels.find(v => v.status === 'geofence_violation' || v.status === 'loitering' || v.status === 'ais_gap' || v.status === 'rendezvous') || 
+                       vessels[0];
 
-  // Dummy NMEA stream for visuals
-  const nmeaStream = [
-    "[08:42:15] !AIVDM,1,1,,A,13MDI200000004@007Dp...",
-    "// Raksha Net AIS Terminal Core initialized...",
-    `L MMSI: ${targetVessel?.mmsi || '419012345'} - Lat ${targetVessel?.lat?.toFixed(4)}, Lon ${targetVessel?.lon?.toFixed(4)}, Speed ${(targetVessel?.sog || 0).toFixed(1)} kts, Heading ${targetVessel?.cog?.toFixed(0)}`,
-    "[08:42:30] !AIVDM,1,1,,A,133sVf0P00PD>GBH?vj...",
-    "L MMSI: 419445566 (Dhow Al-Yusr) - Lat 13.22, Lon 80.53, Speed 1.1 kts, Heading 270"
-  ];
+  const getRiskScore = (v) => {
+    if (v.threat_data?.risk_score) {
+      return v.threat_data.risk_score;
+    }
+    switch (v.status) {
+      case 'geofence_violation': return 85;
+      case 'loitering': return 65;
+      case 'ais_gap': return 55;
+      case 'rendezvous': return 75;
+      default: return 12;
+    }
+  };
+
+  const getRiskColor = (v) => {
+    const score = getRiskScore(v);
+    if (score >= 70) return '#F03A2F'; // Red
+    if (score >= 40) return '#FFB703'; // Yellow
+    return '#00C853'; // Green
+  };
+
+  const renderThreatCard = (v) => {
+    const td = v.threat_data;
+    if (!td) {
+      return (
+        <div className="threat-card-inner">
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">BEHAVIOR STATUS</div>
+              <div className="metric-val text-green" style={{color: '#00C853'}}>NORMAL TRANSIT</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label">THREAT LEVEL</div>
+              <div className="metric-val text-green" style={{color: '#00C853'}}>NORMAL</div>
+            </div>
+          </div>
+          <div className="target-triggers">
+            <div className="trigger-header">DIAGNOSTIC CHECKS</div>
+            <div className="trigger-row normal" style={{background: '#E0FFE0', color: '#008800', padding: '1rem', fontSize: '0.8rem', fontWeight: 600}}>
+              &#10003; No active anomalies detected. Vessel is transiting in normal speed bands.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="threat-card-inner">
+        {/* Specific Metrics depending on Threat Type */}
+        {td.type === 'border_warning' && (
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">DISTANCE TO BORDER</div>
+              <div className="metric-val">{td.distance_to_border ? `${td.distance_to_border.toFixed(2)} NM` : 'Calculating...'}</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label">CROSSING IN</div>
+              <div className="metric-val">{td.remaining_time ? `${td.remaining_time.toFixed(0)} seconds` : 'Immediate'}</div>
+            </div>
+          </div>
+        )}
+
+        {td.type === 'ais_loss' && (
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">TIME SILENT</div>
+              <div className="metric-val">{td.elapsed_time ? `${td.elapsed_time.toFixed(0)}s` : 'Unknown'}</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label">ESTIMATED SEARCH AREA</div>
+              <div className="metric-val">{td.search_area_radius ? `Radius: ${td.search_area_radius.toFixed(3)} NM` : '0 NM'}</div>
+            </div>
+          </div>
+        )}
+
+        {td.type === 'loitering' && (
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">STATIONARY DURATION</div>
+              <div className="metric-val">{td.stationary_duration ? `${td.stationary_duration.toFixed(0)}s` : '0s'}</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label">LOITER THRESHOLD</div>
+              <div className="metric-val">&lt; 2.0 knots</div>
+            </div>
+          </div>
+        )}
+
+        {td.type === 'cluster' && (
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">CLUSTER RADIUS / TIME</div>
+              <div className="metric-val">{td.cluster_radius}m / {td.cluster_duration ? `${td.cluster_duration.toFixed(0)}s` : '0s'}</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label font-mono">SHIPS INVOLVED</div>
+              <div className="metric-val" style={{ fontSize: '0.75rem', lineHeight: 1.2 }}>
+                {td.ships_involved?.map(s => s.ship_name).join(' + ')}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {td.type === 'zone_warning' && (
+          <div className="target-metrics">
+            <div className="metric-box">
+              <div className="metric-label">BREACHED ZONE</div>
+              <div className="metric-val" style={{color: '#F03A2F'}}>{td.zone_name}</div>
+            </div>
+            <div className="metric-box">
+              <div className="metric-label">CONSEQUENCE</div>
+              <div className="metric-val" style={{color: '#F03A2F'}}>Restricted Area Violation</div>
+            </div>
+          </div>
+        )}
+
+        {/* Explainable Reasons */}
+        <div className="threat-reasons">
+          <div className="reasons-header">ALERT EXPLANATION & CONTEXT</div>
+          <div className="reasons-list">
+            {td.reasons?.map((reason, i) => (
+              <div key={i} className="reason-item">
+                <span className="reason-bullet">&#9642;</span> {reason}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recommended Action */}
+        <div className="threat-action">
+          <div className="action-header">RECOMMENDED INTERVENTION PROCEDURES</div>
+          <div className="action-content text-mono">{td.recommendation || 'Maintain standard radar telemetry monitoring.'}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const getNmeaStream = (v) => {
+    if (!v) return ["// No active transponders selected..."];
+    const nowStr = new Date().toLocaleTimeString();
+    
+    if (v.threat_data?.type === 'border_warning') {
+      return [
+        `[${nowStr}] !AIVDM,1,1,,A,13MDI200000004@007Dp...`,
+        `[DEC] MMSI: ${v.mmsi} (${v.ship_name}) approaching international maritime boundary.`,
+        `[TRG] Border warning generated. Distance: ${v.threat_data.distance_to_border?.toFixed(2)} NM. Crossing predicted in ${v.threat_data.remaining_time?.toFixed(0)}s.`,
+        `[REC] ACTION: ${v.threat_data.recommendation}`
+      ];
+    } else if (v.threat_data?.type === 'ais_loss') {
+      return [
+        `[${nowStr}] [SIGNAL LOSS DETECTION LOG]`,
+        `[TRG] MMSI: ${v.mmsi} (${v.ship_name}) transponder silent for ${v.threat_data.elapsed_time?.toFixed(0)}s.`,
+        `[EST] Estimated Search Area Radius: ${v.threat_data.search_area_radius?.toFixed(3)} NM.`,
+        `[REC] ACTION: ${v.threat_data.recommendation}`
+      ];
+    } else if (v.threat_data?.type === 'loitering') {
+      return [
+        `[${nowStr}] !AIVDM,1,1,,A,133sVf0P00PD>GBH?vj...`,
+        `[TRG] MMSI: ${v.mmsi} (${v.ship_name}) loitering inside protected sector. Duration: ${v.threat_data.stationary_duration?.toFixed(0)}s.`,
+        `[REC] ACTION: ${v.threat_data.recommendation}`
+      ];
+    } else if (v.threat_data?.type === 'cluster') {
+      return [
+        `[${nowStr}] [PERSISTENT VESSEL CLUSTER DETECTED]`,
+        `[TRG] Involves: ${v.threat_data.ships_involved?.map(s => `${s.ship_name} (${s.mmsi})`).join(', ')}`,
+        `[TRG] Cluster active for ${v.threat_data.cluster_duration?.toFixed(0)}s. Radius: 300m.`,
+        `[REC] ACTION: ${v.threat_data.recommendation}`
+      ];
+    } else {
+      return [
+        `[${nowStr}] !AIVDM,1,1,,A,13MDI200000004@007Dp...`,
+        `[DEC] MMSI: ${v.mmsi} (${v.ship_name}) transiting normally. Speed: ${v.sog?.toFixed(1)} kn, Course: ${v.cog?.toFixed(0)}°.`,
+        `[TRG] No anomalies registered.`
+      ];
+    }
+  };
+
+  const getTargetStatusLabel = (status) => {
+    switch (status) {
+      case 'geofence_violation': return 'BORDER WARNING';
+      case 'loitering': return 'LOITERING ALERT';
+      case 'ais_gap': return 'AIS SIGNAL LOSS';
+      case 'rendezvous': return 'PERSISTENT CLUSTER';
+      default: return 'NORMAL TRANSIT';
+    }
+  };
 
   return (
     <div className="target-desk">
@@ -44,8 +224,8 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
             <span>&gt;_ NMEA DECODER STREAM</span>
           </div>
           <div className="panel-content nmea-terminal text-mono">
-            {nmeaStream.map((line, i) => (
-              <div key={i} className={line.startsWith('L') ? 'nmea-highlight' : 'nmea-dim'}>
+            {getNmeaStream(targetVessel).map((line, i) => (
+              <div key={i} className={line.startsWith('[TRG]') || line.startsWith('[SIGNAL') ? 'nmea-highlight' : 'nmea-dim'}>
                 {line}
               </div>
             ))}
@@ -76,12 +256,12 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
               <div className="target-header">
                 <div>
                   <div className="target-name">{targetVessel.ship_name}</div>
-                  <div className="target-flag">FLAG: INDIA IN &bull; TYPE: VESSEL</div>
+                  <div className="target-flag">MMSI: {targetVessel.mmsi} &bull; SOURCE: {(targetVessel.source || 'SIMULATED').toUpperCase()}</div>
                 </div>
                 <div className="target-risk">
-                  <div className="risk-label">RISK INDEX</div>
-                  <div className="risk-score">
-                    {targetVessel.status === 'critical' ? '92%' : targetVessel.status === 'warning' ? '78%' : '14%'}
+                  <div className="risk-label font-mono">RISK INDEX</div>
+                  <div className="risk-score" style={{ color: getRiskColor(targetVessel) }}>
+                    {getRiskScore(targetVessel)}%
                   </div>
                 </div>
               </div>
@@ -99,27 +279,19 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
               
               <div className="target-metrics">
                 <div className="metric-box">
-                  <div className="metric-label">TARGET STATUS</div>
-                  <div className="metric-val text-black font-black uppercase">{targetVessel.status}</div>
+                  <div className="metric-label">TARGET BEHAVIOR</div>
+                  <div className="metric-val text-black font-black uppercase">{getTargetStatusLabel(targetVessel.status)}</div>
                 </div>
                 <div className="metric-box">
                   <div className="metric-label">ANOMALY CONFIDENCE</div>
-                  <div className="metric-val text-blue">High (85%)</div>
+                  <div className="metric-val" style={{ color: getRiskColor(targetVessel) }}>
+                    {targetVessel.status !== 'normal' ? 'High (88%)' : 'None'}
+                  </div>
                 </div>
               </div>
               
-              <div className="target-triggers">
-                <div className="trigger-header">FLAGGED ANOMALY TRIGGERS</div>
-                {targetVessel.status === 'critical' && (
-                  <div className="trigger-row critical">&#9888; Protected Sanctuary Breach</div>
-                )}
-                {targetVessel.status === 'warning' && (
-                  <div className="trigger-row warning">&#9888; Loitering / Speed Anomaly</div>
-                )}
-                {targetVessel.status === 'normal' && (
-                  <div className="trigger-row normal">&#10003; No Anomalies Detected</div>
-                )}
-              </div>
+              {renderThreatCard(targetVessel)}
+              
             </div>
           ) : (
             <div className="panel-content empty-state text-mono">NO TARGET SELECTED</div>
@@ -183,7 +355,7 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
           display: flex;
           flex: 1;
           gap: 1rem;
-          min-height: 0; /* Important for scrollable children */
+          min-height: 0;
         }
         
         .grid-panel {
@@ -303,25 +475,52 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
           font-size: 0.9rem;
         }
         
-        .text-blue { color: #0066CC; }
+        .threat-card-inner {
+          display: flex;
+          flex-direction: column;
+        }
         
-        .trigger-header {
+        .threat-reasons {
+          border-bottom: var(--border-thick);
+          padding-bottom: 0.75rem;
+        }
+        .reasons-header {
           font-weight: 900;
           padding: 0.75rem 1rem;
-          border-bottom: var(--border-thick);
+          background: #F5F5F5;
+          border-bottom: var(--border-thin);
+          font-size: 0.75rem;
         }
-        
-        .trigger-row {
+        .reasons-list {
           padding: 0.5rem 1rem;
+        }
+        .reason-item {
+          font-size: 0.8rem;
+          margin-bottom: 0.25rem;
           font-family: var(--font-sans);
-          font-size: 0.85rem;
-          font-weight: 600;
-          border-bottom: 1px solid #CCC;
+          font-weight: 500;
+        }
+        .reason-bullet {
+          color: #FF5722;
+          margin-right: 0.5rem;
         }
         
-        .trigger-row.critical { background: #FFE0E0; color: #CC0000; }
-        .trigger-row.warning { background: #FFF5E0; color: #CC7700; }
-        .trigger-row.normal { background: #E0FFE0; color: #008800; }
+        .threat-action {
+          padding: 0;
+        }
+        .action-header {
+          font-weight: 900;
+          padding: 0.75rem 1rem;
+          background: #F5F5F5;
+          border-bottom: var(--border-thin);
+          font-size: 0.75rem;
+        }
+        .action-content {
+          padding: 0.75rem 1rem;
+          font-size: 0.8rem;
+          color: #CC0000;
+          font-weight: 700;
+        }
       `}</style>
     </div>
   );
