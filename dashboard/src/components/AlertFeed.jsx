@@ -1,129 +1,155 @@
-import { useEffect, useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { AlertTriangle, AlertCircle, Crosshair } from 'lucide-react';
 
-const SEVERITY_ICONS = {
-  critical: '🔴',
-  high: '🔴',
-  medium: '🟡',
-  low: '🔵',
-};
+export default function AlertFeed({ alerts }) {
+  const endRef = useRef(null);
 
-const ALERT_TYPE_ICONS = {
-  geofence_violation: '🚧',
-  loitering: '🔄',
-  ais_gap: '📡',
-  rendezvous: '🤝',
-  speed_anomaly: '⚡',
-  dark_vessel: '👻',
-};
-
-function getAlertIcon(alertType) {
-  if (!alertType) return '⚠️';
-  const key = alertType.toLowerCase().replace(/\s+/g, '_');
-  return ALERT_TYPE_ICONS[key] || '⚠️';
-}
-
-function getSeverityIcon(severity) {
-  if (!severity) return '🔵';
-  return SEVERITY_ICONS[severity.toLowerCase()] || '🔵';
-}
-
-function formatTimestamp(ts) {
-  if (!ts) return '—';
-  try {
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return ts;
-    return d.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  } catch {
-    return ts;
-  }
-}
-
-function formatAlertType(type) {
-  if (!type) return 'Unknown';
-  return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function AlertCard({ alert }) {
-  const severity = (alert.severity || 'low').toLowerCase();
-  const severityClass = `severity-${severity}`;
-
-  return (
-    <div className={`alert-card ${severityClass}`} id={`alert-${alert.id}`}>
-      <div className="severity-bar" />
-      <div className="alert-header">
-        <span className="alert-type">
-          {getAlertIcon(alert.alert_type)}
-          {formatAlertType(alert.alert_type)}
-        </span>
-        <span className="alert-severity-badge">
-          {getSeverityIcon(severity)} {severity}
-        </span>
-      </div>
-      <div className="alert-mmsi">
-        MMSI: {alert.mmsi || '—'}
-        {alert.mmsi2 && ` ↔ ${alert.mmsi2}`}
-      </div>
-      <div className="alert-description">
-        {alert.description || 'No description available'}
-      </div>
-      <div className="alert-meta">
-        <span className="alert-timestamp">
-          🕐 {formatTimestamp(alert.timestamp)}
-        </span>
-        {alert.zone_name && (
-          <span className="alert-zone">📍 {alert.zone_name}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AlertFeed({ alerts }) {
-  const listRef = useRef(null);
-
-  // Auto-scroll to top (newest first)
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = 0;
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [alerts]);
+
+  const getSeverityStyles = (severity) => {
+    switch (severity.toLowerCase()) {
+      case 'critical': return { color: 'var(--color-critical)', border: 'var(--color-critical)' };
+      case 'warning': return { color: 'var(--color-advisory)', border: 'var(--color-advisory)' };
+      case 'intelligence': return { color: 'var(--color-intelligence)', border: 'var(--color-intelligence)' };
+      default: return { color: 'var(--text-secondary)', border: 'var(--border-tactical)' };
     }
-  }, [alerts.length]);
+  };
+
+  const getSeverityIcon = (severity) => {
+    switch (severity.toLowerCase()) {
+      case 'critical': return <AlertTriangle size={14} />;
+      case 'warning': return <AlertCircle size={14} />;
+      case 'intelligence': return <Crosshair size={14} />;
+      default: return <AlertCircle size={14} />;
+    }
+  };
 
   return (
-    <div className="alert-feed" id="alert-feed">
-      <div className="alert-feed-header">
-        <h2>
-          <span className="alert-icon">🚨</span>
-          THREAT FEED
-        </h2>
-        {alerts.length > 0 && (
-          <span className="alert-count-badge">{alerts.length}</span>
+    <div className="alert-feed tactical-panel">
+      <div className="alert-header">
+        <h2 className="text-sans font-bold color-primary">THREAT INTELLIGENCE LOG</h2>
+        <div className="pulse-indicator"></div>
+      </div>
+      
+      <div className="alert-list">
+        {alerts.length === 0 ? (
+          <div className="empty-state text-mono color-muted">NO ACTIVE THREATS</div>
+        ) : (
+          alerts.map(alert => {
+            const styles = getSeverityStyles(alert.severity);
+            return (
+              <div key={alert.id} className="alert-card" style={{ borderLeftColor: styles.border }}>
+                <div className="alert-top text-mono">
+                  <span className="alert-severity" style={{ color: styles.color }}>
+                    {getSeverityIcon(alert.severity)} {alert.severity.toUpperCase()}
+                  </span>
+                  <span className="alert-time color-muted">{new Date(alert.timestamp * 1000).toLocaleTimeString()}</span>
+                </div>
+                
+                <div className="alert-type text-sans font-semibold color-primary">
+                  {alert.alert_type.replace('_', ' ').toUpperCase()}
+                </div>
+                
+                <div className="alert-desc text-sans color-secondary">
+                  {alert.description}
+                </div>
+                
+                <div className="alert-meta text-mono color-muted">
+                  MMSI: {alert.mmsi} {alert.mmsi2 ? `& ${alert.mmsi2}` : ''}
+                </div>
+              </div>
+            );
+          })
         )}
+        <div ref={endRef} />
       </div>
 
-      <div className="alert-feed-list" ref={listRef}>
-        {alerts.length === 0 ? (
-          <div className="alert-feed-empty">
-            <div className="empty-icon">🛡️</div>
-            <p>
-              No alerts detected.<br />
-              Monitoring maritime traffic…
-            </p>
-          </div>
-        ) : (
-          alerts.map((alert, idx) => (
-            <AlertCard key={alert.id || idx} alert={alert} />
-          ))
-        )}
-      </div>
+      <style>{`
+        .alert-feed {
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          width: 320px;
+          display: flex;
+          flex-direction: column;
+          border-top: none;
+          border-right: none;
+          border-bottom: none;
+        }
+        .alert-header {
+          height: 50px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 1rem;
+          border-bottom: 1px solid var(--border-tactical);
+          background: rgba(6, 11, 18, 0.5);
+        }
+        .alert-header h2 {
+          font-size: 0.75rem;
+          letter-spacing: 0.1em;
+          margin: 0;
+        }
+        .pulse-indicator {
+          width: 6px;
+          height: 6px;
+          background: var(--color-critical);
+          border-radius: 50%;
+          box-shadow: 0 0 8px var(--color-critical);
+          animation: pulse 2s infinite;
+        }
+        .alert-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+        .empty-state {
+          text-align: center;
+          padding: 2rem 0;
+          font-size: 0.8rem;
+        }
+        .alert-card {
+          background: rgba(6, 11, 18, 0.8);
+          border: 1px solid var(--border-tactical);
+          border-left-width: 3px;
+          padding: 0.75rem;
+          transition: transform 0.2s;
+        }
+        .alert-card:hover {
+          background: var(--bg-hover);
+        }
+        .alert-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.7rem;
+          margin-bottom: 0.5rem;
+        }
+        .alert-severity {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-weight: 700;
+        }
+        .alert-type {
+          font-size: 0.85rem;
+          margin-bottom: 0.25rem;
+        }
+        .alert-desc {
+          font-size: 0.8rem;
+          line-height: 1.4;
+          margin-bottom: 0.5rem;
+        }
+        .alert-meta {
+          font-size: 0.7rem;
+        }
+      `}</style>
     </div>
   );
 }
-
-export default AlertFeed;

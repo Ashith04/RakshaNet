@@ -1,178 +1,55 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import MapView from './components/MapView';
 import StatsBar from './components/StatsBar';
 import AlertFeed from './components/AlertFeed';
-import DataTableView from './components/DataTableView';
+import SplashScreen from './components/SplashScreen';
+import Header from './components/Header';
+import './App.css';
 
-const WS_BASE = 'ws://localhost:8080/ws';
-const API_BASE = 'http://localhost:8080/api';
-
-function App() {
-  const [vessels, setVessels] = useState({});
+export default function App() {
+  const [vessels, setVessels] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [config, setConfig] = useState(null);
-  const [wsStatus, setWsStatus] = useState({ vessels: false, alerts: false });
-  const [viewMode, setViewMode] = useState('map');
+  const [isBooting, setIsBooting] = useState(true);
 
-  const vesselWsRef = useRef(null);
-  const alertWsRef = useRef(null);
-  const statsIntervalRef = useRef(null);
-  const reconnectTimersRef = useRef({});
-
-  // Fetch config (geofence zones)
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/config`);
-        if (res.ok) {
-          const data = await res.json();
-          setConfig(data);
-        }
-      } catch (err) {
-        console.warn('Config fetch failed, will retry in 5s:', err.message);
-        setTimeout(fetchConfig, 5000);
-      }
-    };
-    fetchConfig();
-  }, []);
+    // Only connect websockets after boot sequence
+    if (isBooting) return;
 
-  // Poll stats
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/stats`);
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
-        }
-      } catch {
-        // Silently fail - stats are optional
-      }
+    const wsVessels = new WebSocket('ws://localhost:8080/ws/vessels');
+    wsVessels.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setVessels(data);
     };
 
-    fetchStats();
-    statsIntervalRef.current = setInterval(fetchStats, 1000);
-
-    return () => {
-      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-    };
-  }, []);
-
-  // WebSocket connection with auto-reconnect
-  const connectWebSocket = useCallback((path, onMessage, statusKey) => {
-    const url = `${WS_BASE}/${path}`;
-    let ws;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket(url);
-
-        ws.onopen = () => {
-          console.log(`[WS] Connected: ${path}`);
-          setWsStatus(prev => ({ ...prev, [statusKey]: true }));
-          if (reconnectTimersRef.current[path]) {
-            clearTimeout(reconnectTimersRef.current[path]);
-            reconnectTimersRef.current[path] = null;
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            onMessage(data);
-          } catch (err) {
-            console.warn(`[WS] Parse error on ${path}:`, err);
-          }
-        };
-
-        ws.onclose = () => {
-          console.log(`[WS] Disconnected: ${path}`);
-          setWsStatus(prev => ({ ...prev, [statusKey]: false }));
-          reconnectTimersRef.current[path] = setTimeout(connect, 3000);
-        };
-
-        ws.onerror = (err) => {
-          console.warn(`[WS] Error on ${path}:`, err);
-          ws.close();
-        };
-      } catch (err) {
-        console.warn(`[WS] Connection failed for ${path}:`, err);
-        reconnectTimersRef.current[path] = setTimeout(connect, 3000);
-      }
-
-      return ws;
-    };
-
-    return connect();
-  }, []);
-
-  // Vessel WebSocket
-  useEffect(() => {
-    vesselWsRef.current = connectWebSocket('vessels', (data) => {
-      if (Array.isArray(data)) {
-        setVessels(prev => {
-          const next = { ...prev };
-          data.forEach(v => {
-            next[v.mmsi] = { ...v, lastUpdate: Date.now() };
-          });
-          return next;
-        });
-      }
-    }, 'vessels');
-
-    return () => {
-      if (vesselWsRef.current) vesselWsRef.current.close();
-      if (reconnectTimersRef.current['vessels']) {
-        clearTimeout(reconnectTimersRef.current['vessels']);
-      }
-    };
-  }, [connectWebSocket]);
-
-  // Alert WebSocket
-  useEffect(() => {
-    alertWsRef.current = connectWebSocket('alerts', (data) => {
+    const wsAlerts = new WebSocket('ws://localhost:8080/ws/alerts');
+    wsAlerts.onmessage = (event) => {
+      const newAlert = JSON.parse(event.data);
       setAlerts(prev => {
-        const next = [data, ...prev];
-        // Keep max 200 alerts in memory
-        if (next.length > 200) next.length = 200;
-        return next;
+        // Keep last 100 alerts
+        const updated = [newAlert, ...prev];
+        if (updated.length > 100) updated.length = 100;
+        return updated;
       });
-    }, 'alerts');
+    };
 
     return () => {
-      if (alertWsRef.current) alertWsRef.current.close();
-      if (reconnectTimersRef.current['alerts']) {
-        clearTimeout(reconnectTimersRef.current['alerts']);
-      }
+      wsVessels.close();
+      wsAlerts.close();
     };
-  }, [connectWebSocket]);
+  }, [isBooting]);
+
+  if (isBooting) {
+    return <SplashScreen onComplete={() => setIsBooting(false)} />;
+  }
 
   return (
     <div className="app-container">
-      {viewMode === 'map' ? (
-        <MapView
-          vessels={vessels}
-          config={config}
-        />
-      ) : (
-        <DataTableView vessels={vessels} />
-      )}
-      
-      <StatsBar
-        stats={stats}
-        wsStatus={wsStatus}
-        viewMode={viewMode}
-        onToggleView={() => setViewMode(v => v === 'map' ? 'data' : 'map')}
-      />
-      
-      {viewMode === 'map' && (
-        <AlertFeed
-          alerts={alerts}
-        />
-      )}
+      <Header />
+      <div className="main-content">
+        <StatsBar />
+        <MapView vessels={vessels} />
+        <AlertFeed alerts={alerts} />
+      </div>
     </div>
   );
 }
-
-export default App;

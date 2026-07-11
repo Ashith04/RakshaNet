@@ -1,187 +1,119 @@
-import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, useMap } from 'react-leaflet';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
-const STATUS_COLORS = {
-  normal: '#00ff88',
-  loitering: '#ffaa00',
-  ais_gap: '#ffaa00',
-  warning: '#ffaa00',
-  geofence_violation: '#ff3366',
-  danger: '#ff3366',
-  rendezvous: '#aa55ff',
-  flagged: '#aa55ff',
-};
+export default function MapView({ vessels }) {
+  const [config, setConfig] = useState(null);
 
-const STATUS_LABELS = {
-  normal: 'Normal Transit',
-  loitering: 'Loitering',
-  ais_gap: 'AIS Gap',
-  warning: 'Warning',
-  geofence_violation: 'Geofence Violation',
-  danger: 'Danger',
-  rendezvous: 'Rendezvous Flagged',
-  flagged: 'Flagged',
-};
-
-function getStatusColor(status) {
-  if (!status) return STATUS_COLORS.normal;
-  const key = status.toLowerCase().replace(/\s+/g, '_');
-  return STATUS_COLORS[key] || STATUS_COLORS.normal;
-}
-
-function getStatusLabel(status) {
-  if (!status) return 'Normal Transit';
-  const key = status.toLowerCase().replace(/\s+/g, '_');
-  return STATUS_LABELS[key] || status;
-}
-
-function formatCoord(val, isLat) {
-  if (val == null) return '—';
-  const dir = isLat ? (val >= 0 ? 'N' : 'S') : (val >= 0 ? 'E' : 'W');
-  return `${Math.abs(val).toFixed(4)}° ${dir}`;
-}
-
-// Component to invalidate map size on mount
-function MapResizer() {
-  const map = useMap();
   useEffect(() => {
-    setTimeout(() => map.invalidateSize(), 100);
-  }, [map]);
-  return null;
-}
+    fetch('http://localhost:8080/api/config')
+      .then(res => res.json())
+      .then(data => setConfig(data))
+      .catch(err => console.error("Config fetch error:", err));
+  }, []);
 
-function VesselMarker({ vessel }) {
-  const color = getStatusColor(vessel.status);
-  const label = getStatusLabel(vessel.status);
-  const isAlert = vessel.status && vessel.status !== 'normal';
-
-  return (
-    <CircleMarker
-      center={[vessel.lat, vessel.lon]}
-      radius={isAlert ? 5 : 3}
-      pathOptions={{
-        fillColor: color,
-        fillOpacity: isAlert ? 0.9 : 0.7,
-        color: color,
-        weight: isAlert ? 2 : 1,
-        opacity: isAlert ? 0.8 : 0.5,
-      }}
-    >
-      <Popup>
-        <div className="vessel-popup">
-          <h3>
-            <span className="status-dot" style={{ background: color }} />
-            {vessel.ship_name || 'Unknown Vessel'}
-          </h3>
-          <div className="popup-grid">
-            <span className="label">MMSI</span>
-            <span className="value">{vessel.mmsi}</span>
-
-            <span className="label">Status</span>
-            <span className="value" style={{ color }}>{label}</span>
-
-            <span className="label">Speed</span>
-            <span className="value">{vessel.sog != null ? `${vessel.sog.toFixed(1)} kn` : '—'}</span>
-
-            <span className="label">Heading</span>
-            <span className="value">{vessel.cog != null ? `${vessel.cog.toFixed(1)}°` : '—'}</span>
-
-            <span className="label">Lat</span>
-            <span className="value">{formatCoord(vessel.lat, true)}</span>
-
-            <span className="label">Lon</span>
-            <span className="value">{formatCoord(vessel.lon, false)}</span>
-          </div>
-          {isAlert && (
-            <div
-              className="alert-badge"
-              style={{
-                background: `${color}18`,
-                color: color,
-                border: `1px solid ${color}40`,
-              }}
-            >
-              ⚠ {label}
-            </div>
-          )}
-        </div>
-      </Popup>
-    </CircleMarker>
-  );
-}
-
-function GeofenceZone({ zone }) {
-  // Config gives polygon as [[lon, lat], ...] — Leaflet needs [[lat, lon], ...]
-  const positions = useMemo(() => {
-    if (!zone.polygon || !Array.isArray(zone.polygon)) return [];
-    return zone.polygon.map(([lon, lat]) => [lat, lon]);
-  }, [zone.polygon]);
-
-  if (positions.length < 3) return null;
+  const getVesselColor = (status) => {
+    switch (status) {
+      case 'violation': return 'var(--color-critical)'; // #FF3366
+      case 'loitering':
+      case 'ais_gap': return 'var(--color-advisory)'; // #FFB300
+      case 'rendezvous': return 'var(--color-intelligence)'; // #B366FF
+      default: return 'var(--color-nominal)'; // #00E5FF
+    }
+  };
 
   return (
-    <Polygon
-      positions={positions}
-      pathOptions={{
-        color: '#ff3366',
-        fillColor: '#ff3366',
-        fillOpacity: 0.08,
-        weight: 1.5,
-        opacity: 0.5,
-        dashArray: '8 4',
-      }}
-    >
-      <Popup>
-        <div className="vessel-popup">
-          <h3>
-            <span className="status-dot" style={{ background: '#ff3366' }} />
-            {zone.name || 'Restricted Zone'}
-          </h3>
-          <div className="popup-grid">
-            <span className="label">Type</span>
-            <span className="value">Geofence Zone</span>
-            <span className="label">Vertices</span>
-            <span className="value">{zone.polygon.length}</span>
-          </div>
-        </div>
-      </Popup>
-    </Polygon>
-  );
-}
-
-function MapView({ vessels, config }) {
-  const vesselList = useMemo(() => Object.values(vessels || {}), [vessels]);
-  const zones = config?.zones || [];
-
-  return (
-    <div className="map-container">
-      <MapContainer
-        center={[15, 70]}
-        zoom={5}
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
+      <MapContainer 
+        center={[15.0, 75.0]} 
+        zoom={5} 
+        style={{ width: '100%', height: '100%', background: 'var(--bg-void)' }}
         zoomControl={false}
         attributionControl={false}
-        style={{ width: '100%', height: '100%' }}
       >
-        <MapResizer />
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          subdomains="abcd"
-          maxZoom={19}
+          url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
         />
+        
+        {config?.zones?.map((zone, idx) => {
+          // Leaflet uses [lat, lon], config polygon is [[lon, lat], ...]
+          const positions = zone.polygon.map(coord => [coord[1], coord[0]]);
+          return (
+            <Polygon 
+              key={idx} 
+              positions={positions} 
+              pathOptions={{ 
+                color: 'var(--color-critical)', 
+                fillColor: 'var(--color-critical)', 
+                fillOpacity: 0.15,
+                weight: 1,
+                dashArray: '4 4' // Tactical dashed border
+              }} 
+            />
+          );
+        })}
 
-        {/* Geofence zones */}
-        {zones.map((zone, idx) => (
-          <GeofenceZone key={zone.name || idx} zone={zone} />
-        ))}
-
-        {/* Vessels */}
-        {vesselList.map((vessel) => (
-          <VesselMarker key={vessel.mmsi} vessel={vessel} />
+        {vessels.map(v => (
+          <CircleMarker
+            key={v.mmsi}
+            center={[v.lat, v.lon]}
+            radius={v.status !== 'normal' ? 4 : 2}
+            pathOptions={{ 
+              color: getVesselColor(v.status),
+              fillColor: getVesselColor(v.status),
+              fillOpacity: v.status !== 'normal' ? 0.8 : 0.4,
+              weight: v.status !== 'normal' ? 1.5 : 0
+            }}
+          >
+            <Popup className="tactical-popup">
+              <div className="popup-content">
+                <div className="popup-header color-nominal">{v.ship_name}</div>
+                <div className="popup-stat"><span>MMSI:</span> {v.mmsi}</div>
+                <div className="popup-stat"><span>SPEED:</span> {(v.sog || 0).toFixed(1)} kn</div>
+                <div className="popup-stat"><span>HDG:</span> {(v.cog || 0).toFixed(1)}°</div>
+                <div className="popup-stat"><span>STATUS:</span> <span style={{color: getVesselColor(v.status)}}>{v.status.toUpperCase()}</span></div>
+                <div className="popup-stat"><span>SOURCE:</span> {(v.source || 'SIMULATED').toUpperCase()}</div>
+              </div>
+            </Popup>
+          </CircleMarker>
         ))}
       </MapContainer>
+      <style>{`
+        /* Override leaflet popup styles to match tactical design */
+        .leaflet-popup-content-wrapper {
+          background: var(--bg-panel);
+          border: 1px solid var(--border-tactical);
+          border-radius: 2px;
+          color: var(--text-primary);
+          padding: 0;
+        }
+        .leaflet-popup-tip {
+          background: var(--bg-panel);
+          border: 1px solid var(--border-tactical);
+        }
+        .tactical-popup .popup-content {
+          font-family: var(--font-mono);
+          font-size: 0.75rem;
+          padding: 0.5rem;
+        }
+        .tactical-popup .popup-header {
+          font-family: var(--font-sans);
+          font-weight: 700;
+          font-size: 0.85rem;
+          margin-bottom: 0.5rem;
+          border-bottom: 1px solid var(--border-tactical);
+          padding-bottom: 0.25rem;
+        }
+        .tactical-popup .popup-stat {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 0.25rem;
+          gap: 1rem;
+        }
+        .tactical-popup .popup-stat span:first-child {
+          color: var(--text-secondary);
+        }
+      `}</style>
     </div>
   );
 }
-
-export default MapView;
