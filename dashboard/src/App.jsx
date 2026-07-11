@@ -8,6 +8,7 @@ import DataView from './components/DataView';
 import AlertToast from './components/AlertToast';
 import SimultaneousAlerts from './components/SimultaneousAlerts';
 import FleetScoring from './components/FleetScoring';
+import GridAnalytics from './components/GridAnalytics';
 import './App.css';
 
 export default function App() {
@@ -119,15 +120,18 @@ export default function App() {
                 />
               )}
               {viewMode === 'map' && (
-                <MapView 
-                  vessels={vessels} 
-                  buckets={buckets}
-                  selectedMmsi={selectedMmsi}
-                  onSelectVessel={(mmsi) => {
-                    setSelectedMmsi(mmsi);
-                    setViewMode('threat');
-                  }} 
-                />
+                <>
+                  <GridAnalytics buckets={buckets} />
+                  <MapView 
+                    vessels={vessels} 
+                    buckets={buckets}
+                    selectedMmsi={selectedMmsi}
+                    onSelectVessel={(mmsi) => {
+                      setSelectedMmsi(mmsi);
+                      setViewMode('threat');
+                    }} 
+                  />
+                </>
               )}
               {viewMode === 'data' && (
                 <DataView 

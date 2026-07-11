@@ -59,6 +59,15 @@ export default function AlertFeed({ alerts }) {
                 <div className="alert-meta text-mono color-muted">
                   MMSI: {alert.mmsi} {alert.mmsi2 ? `& ${alert.mmsi2}` : ''}
                 </div>
+                
+                {alert.alert_type === 'spoofing' && (
+                  <div className="alert-extended text-mono" style={{marginTop: '0.5rem', fontSize: '0.65rem', color: 'var(--color-critical)'}}>
+                    <div>SPEED: {alert.calc_speed?.toFixed(1)} knots</div>
+                    <div>FROM: [{alert.prev_location?.[0]?.toFixed(4)}, {alert.prev_location?.[1]?.toFixed(4)}]</div>
+                    <div>TO: [{alert.curr_location?.[0]?.toFixed(4)}, {alert.curr_location?.[1]?.toFixed(4)}]</div>
+                    <div>SCORE: {alert.risk_score} - {alert.recommendation}</div>
+                  </div>
+                )}
               </div>
             );
           })
