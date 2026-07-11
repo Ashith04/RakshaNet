@@ -1,106 +1,165 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Clock, Wifi } from 'lucide-react';
+import React from 'react';
 
-export default function Header() {
-  const [time, setTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatUTC = (date) => {
-    return date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+export default function Header({ viewMode, setViewMode }) {
+  const handleRestart = async () => {
+    try {
+      await fetch('http://localhost:8080/api/restart', { method: 'POST' });
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
-    <header className="tactical-panel header-container">
-      <div className="header-left">
-        <ShieldAlert size={20} className="color-nominal" strokeWidth={2} />
-        <div className="header-title">Raksha<span className="color-nominal">Net</span></div>
-        <div className="header-badge">CLASSIFIED</div>
-      </div>
-      
-      <div className="header-center">
-        <div className="header-search">
-          <input type="text" placeholder="Search MMSI or Vessel Name..." className="text-mono" />
+    <div className="global-header-wrapper">
+      {/* Top Navigation Bar */}
+      <header className="global-header">
+        <div className="logo-box">
+          <div className="logo-top">RAKSHA NET</div>
+          <div className="logo-bottom">MARITIME TRIAGE CORE</div>
         </div>
-      </div>
-      
-      <div className="header-right">
-        <div className="header-status-item text-mono">
-          <Wifi size={14} className="color-nominal" />
-          <span className="color-nominal">DATALINK SECURE</span>
+        
+        <nav className="header-nav">
+          <div className={`nav-link ${viewMode === 'map' ? 'active' : ''}`} onClick={() => setViewMode('map')}>Operator<br/>Command Hub</div>
+          <div className={`nav-link ${viewMode === 'data' ? 'active' : ''}`} onClick={() => setViewMode('data')}>Voyage<br/>Registers &<br/>Step 0</div>
+          <div className="nav-link">RPI<br/>Fleet<br/>Scoring</div>
+          <div className="nav-link">Drift<br/>Grid<br/>Overlay</div>
+          <div className="nav-link">Simultaneous<br/>Alerts</div>
+          <div className={`nav-link ${viewMode === 'threat' ? 'active' : ''}`} onClick={() => setViewMode('threat')}>AIS<br/>Threat<br/>Monitor</div>
+          <div className="nav-link">Family<br/>Tracking<br/>Link</div>
+        </nav>
+        
+        <div className="header-actions">
+          <button className="brutalist-button restart-btn" onClick={handleRestart}>Restart Scenario</button>
         </div>
-        <div className="header-status-item text-mono color-secondary">
-          <Clock size={14} />
-          <span>{formatUTC(time)}</span>
+      </header>
+
+      {/* Emergency Broadcast Ticker */}
+      <div className="emergency-ticker">
+        <div className="ticker-label">EMERGENCY BROADCAST</div>
+        <div className="ticker-content">
+          <span className="siren">🚨</span> Active Distress coordination in Sector Delta. Target vessel: M.V. Sagar Kanya (DAT Alert).
         </div>
+        <div className="ticker-badge">1 INCIDENT ONLINE</div>
       </div>
 
       <style>{`
-        .header-container {
-          height: 48px;
+        .global-header-wrapper {
           display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 1rem;
-          border-left: none;
-          border-right: none;
-          border-top: none;
+          flex-direction: column;
+          width: 100%;
         }
-        .header-left {
+        
+        .global-header {
           display: flex;
+          height: 60px;
+          background: var(--bg-white);
+          border-bottom: var(--border-thick);
+        }
+        
+        .logo-box {
+          border-right: var(--border-thick);
+          padding: 0.5rem 1rem;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
           align-items: center;
-          gap: 0.75rem;
+          min-width: 250px;
         }
-        .header-title {
-          font-family: var(--font-sans);
-          font-size: 1.25rem;
-          font-weight: 700;
-          letter-spacing: -0.05em;
+        .logo-top {
+          font-weight: 900;
+          font-size: 1.1rem;
+          letter-spacing: 0.1em;
         }
-        .header-badge {
-          background: rgba(255, 51, 102, 0.15);
-          color: var(--color-critical);
-          border: 1px solid rgba(255, 51, 102, 0.3);
-          font-family: var(--font-mono);
+        .logo-bottom {
+          font-weight: 600;
           font-size: 0.65rem;
-          padding: 2px 6px;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          margin-left: 0.5rem;
+          letter-spacing: 0.15em;
+          color: #555;
         }
-        .header-center {
+
+        .header-nav {
           flex: 1;
           display: flex;
+        }
+        
+        .nav-link {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          font-size: 0.7rem;
+          font-weight: 800;
+          line-height: 1.2;
+          color: var(--text-black);
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+        
+        .nav-link:hover {
+          background: var(--bg-gray);
+        }
+        
+        .nav-link.active {
+          border-bottom: 4px solid var(--text-black);
+        }
+
+        .header-actions {
+          padding: 0 1rem;
+          display: flex;
+          align-items: center;
           justify-content: center;
         }
-        .header-search input {
-          background: var(--bg-void);
-          border: 1px solid var(--border-tactical);
-          color: var(--text-primary);
-          padding: 0.25rem 0.75rem;
-          width: 300px;
+        
+        .restart-btn {
           font-size: 0.8rem;
-          outline: none;
-          transition: border-color 0.2s;
+          padding: 0.5rem 1.5rem;
         }
-        .header-search input:focus {
-          border-color: var(--color-nominal);
-        }
-        .header-right {
+
+        .emergency-ticker {
           display: flex;
-          align-items: center;
-          gap: 1.5rem;
-        }
-        .header-status-item {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
+          height: 30px;
+          background: var(--bg-black);
+          color: var(--text-white);
+          font-family: var(--font-sans);
           font-size: 0.75rem;
+          font-weight: 800;
+        }
+        
+        .ticker-label {
+          background: var(--bg-red);
+          color: var(--text-white);
+          padding: 0 1.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          letter-spacing: 0.05em;
+        }
+        
+        .ticker-content {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          padding: 0 1rem;
+          gap: 0.5rem;
+        }
+        
+        .siren {
+          font-size: 1rem;
+        }
+        
+        .ticker-badge {
+          background: var(--bg-neon);
+          color: var(--text-black);
+          padding: 0 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 4px;
+          border-radius: 2px;
         }
       `}</style>
-    </header>
+    </div>
   );
 }

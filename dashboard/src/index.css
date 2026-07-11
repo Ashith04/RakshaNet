@@ -1,27 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;700;800&display=swap');
 
 :root {
-  /* Backgrounds */
-  --bg-void: #060B12;
-  --bg-panel: rgba(15, 23, 34, 0.85);
-  --bg-hover: #162032;
+  --bg-white: #FFFFFF;
+  --bg-black: #0F0F0F;
+  --bg-red: #F03A2F;
+  --bg-neon: #DFFF00;
+  --bg-gray: #E5E5E5;
+  --bg-darkgray: #1C1C1C;
   
-  /* Borders */
-  --border-tactical: #233045;
-  --border-tactical-glow: rgba(0, 229, 255, 0.3);
+  --text-black: #000000;
+  --text-white: #FFFFFF;
+  --text-gray: #666666;
   
-  /* Text */
-  --text-primary: #E0E7FF;
-  --text-secondary: #8A9BB3;
-  --text-muted: #4A5B75;
+  --color-alert: #F03A2F;
+  --color-safe: #00C853;
+  --color-neon: #DFFF00;
   
-  /* Operational Indicators */
-  --color-nominal: #00E5FF;
-  --color-advisory: #FFB300;
-  --color-critical: #FF3366;
-  --color-intelligence: #B366FF;
+  --border-thick: 2px solid #000000;
+  --border-thin: 1px solid #000000;
+  --border-light: 1px solid #E5E5E5;
   
-  /* Typography */
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -33,26 +31,53 @@
 }
 
 body {
+  background-color: var(--bg-white);
+  color: var(--text-black);
   font-family: var(--font-sans);
-  background-color: var(--bg-void);
-  color: var(--text-primary);
-  overflow: hidden; /* App is full screen */
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
-/* Custom Scrollbar for tactical panels */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
+
+.brutalist-container {
+  border: var(--border-thick);
+  background: var(--bg-white);
+}
+
+.brutalist-button {
+  background: var(--bg-black);
+  color: var(--text-white);
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+
+.brutalist-button:hover {
+  background: var(--bg-red);
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-gray);
+  border-left: var(--border-thin);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-tactical);
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--bg-black);
 }
