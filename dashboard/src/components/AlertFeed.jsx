@@ -8,6 +8,13 @@ export default function AlertFeed({ alerts }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [alerts]);
 
+  useEffect(() => {
+    if (alerts && alerts.length) {
+      // Log a small sample so we can inspect incoming alert payloads
+      console.debug('AlertFeed: sample alerts', alerts.slice(0, 5));
+    }
+  }, [alerts]);
+
   const getSeverityStyles = (severity) => {
     switch (severity.toLowerCase()) {
       case 'critical': return { color: 'var(--color-critical)', border: 'var(--color-critical)' };
@@ -26,6 +33,25 @@ export default function AlertFeed({ alerts }) {
     }
   };
 
+  const getLatencyDisplay = (alert) => {
+    const rawLatency = alert?.processing_latency_ms ?? alert?.latency_ms ?? alert?.latency ?? null;
+    if (rawLatency === null || rawLatency === undefined || rawLatency === '') {
+      return <span style={{ color: 'var(--text-secondary)' }}>PENDING</span>;
+    }
+
+    const latency = Number(rawLatency);
+    if (Number.isNaN(latency)) {
+      return <span style={{ color: 'var(--text-secondary)' }}>PENDING</span>;
+    }
+
+    const color = latency < 5 ? 'var(--color-nominal)' : latency <= 10 ? 'var(--color-advisory)' : 'var(--color-critical)';
+    return (
+      <span className="latency-pill" style={{ color, borderColor: color }}>
+        {latency.toFixed(2)} ms
+      </span>
+    );
+  };
+
   return (
     <div className="alert-feed tactical-panel">
       <div className="alert-header">
@@ -40,12 +66,22 @@ export default function AlertFeed({ alerts }) {
           alerts.map(alert => {
             const styles = getSeverityStyles(alert.severity);
             return (
-              <div key={alert.id} className="alert-card" style={{ borderLeftColor: styles.border }}>
+              <div key={alert.id} className={`alert-card ${alert.priority === 1 ? 'critical-pulse' : ''}`} style={{ borderLeftColor: styles.border }}>
+                <div className="latency-score">
+                  <div className="latency-score-box">
+                    {(() => {
+                      const raw = alert?.processing_latency_ms ?? alert?.latency_ms ?? alert?.latency ?? null;
+                      const n = Number(raw);
+                      if (!raw || Number.isNaN(n) || n <= 0) return 'PENDING';
+                      return `${n.toFixed(2)} ms`;
+                    })()}
+                  </div>
+                </div>
                 <div className="alert-top text-mono">
                   <span className="alert-severity" style={{ color: styles.color }}>
                     {getSeverityIcon(alert.severity)} {alert.severity.toUpperCase()}
                   </span>
-                  <span className="alert-time color-muted">{new Date(alert.timestamp * 1000).toLocaleTimeString()}</span>
+                  <span className="alert-time color-muted">{new Date(alert.timestamp).toLocaleTimeString()}</span>
                 </div>
                 
                 <div className="alert-type text-sans font-semibold color-primary">
@@ -54,10 +90,6 @@ export default function AlertFeed({ alerts }) {
                 
                 <div className="alert-desc text-sans color-secondary">
                   {alert.description}
-                </div>
-                
-                <div className="alert-meta text-mono color-muted">
-                  MMSI: {alert.mmsi} {alert.mmsi2 ? `& ${alert.mmsi2}` : ''}
                 </div>
                 
                 {alert.alert_type === 'spoofing' && (
@@ -129,6 +161,15 @@ export default function AlertFeed({ alerts }) {
           border-left-width: 3px;
           padding: 0.75rem;
           transition: transform 0.2s;
+          position: relative;
+        }
+        .critical-pulse {
+          animation: criticalPulse 1.5s infinite;
+        }
+        @keyframes criticalPulse {
+          0% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(255, 51, 102, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0); }
         }
         .alert-card:hover {
           background: var(--bg-hover);
@@ -157,6 +198,32 @@ export default function AlertFeed({ alerts }) {
         }
         .alert-meta {
           font-size: 0.7rem;
+        }
+         .latency-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.12rem 0.4rem;
+          border: 1px solid currentColor;
+          border-radius: 999px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          background: rgba(255, 255, 255, 0.04);
+        }
+        .latency-score {
+          position: absolute;
+          top: 8px;
+          right: 58px; /* offset to avoid overlapping the SCORE box */
+          z-index: 5;
+        }
+        .latency-score-box {
+          background: #000;
+          color: #fff;
+          padding: 0.22rem 0.5rem;
+          border-radius: 4px;
+          font-weight: 800;
+          font-size: 0.78rem;
+          box-shadow: 0 2px 0 rgba(0,0,0,0.35);
         }
       `}</style>
     </div>

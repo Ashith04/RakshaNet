@@ -41,10 +41,18 @@ export default function StatsBar({ vessels = [] }) {
         <div className="stat-subtitle">Geofence, loitering, gap & rendezvous alerts</div>
       </div>
       
-      <div className="stat-col no-border-right">
+      <div className="stat-col">
         <div className="stat-title">RESPONSE FLEET STANDBY</div>
         <div className="stat-value">6 Volunteers</div>
         <div className="stat-subtitle">Voluntary crafts calibrated by RPI score</div>
+      </div>
+
+      <div className="stat-col no-border-right">
+        <div className="stat-title">ENGINE TELEMETRY (RUST)</div>
+        <div className="stat-value">{stats.messages_per_second ? (stats.messages_per_second / 1000).toFixed(1) + 'k' : '0'} msgs/sec</div>
+        <div className="stat-subtitle">
+          Avg: {stats.avg_latency_us || 0}µs | P50: {stats.p50_latency_us || 0}µs | P99: {stats.p99_latency_us || 0}µs
+        </div>
       </div>
 
       <style>{`

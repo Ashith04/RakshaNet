@@ -30,9 +30,19 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
     return '#00C853'; // Green
   };
 
+  const getLatencyBadge = (latency) => {
+    if (latency == null || isNaN(latency)) return <span className="latency-badge" style={{color: '#999', fontWeight: 900}}>N/A</span>;
+    if (latency < 5) return <span className="latency-badge" style={{color: '#00C853', fontWeight: 900}}>🟢 {latency.toFixed(2)} ms</span>;
+    if (latency <= 10) return <span className="latency-badge" style={{color: '#FFB703', fontWeight: 900}}>🟡 {latency.toFixed(2)} ms</span>;
+    return <span className="latency-badge" style={{color: '#F03A2F', fontWeight: 900}}>🔴 {latency.toFixed(2)} ms</span>;
+  };
+
   const renderThreatCard = (v) => {
+    const alert = alerts.find(a => a.mmsi === v.mmsi);
     const td = v.threat_data;
-    if (!td) {
+
+    // If no alert exists or vessel is completely normal
+    if (!alert && !td) {
       return (
         <div className="threat-card-inner">
           <div className="target-metrics">
@@ -55,92 +65,50 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
       );
     }
 
+    // Exact Format Required by User
     return (
-      <div className="threat-card-inner">
-        {/* Specific Metrics depending on Threat Type */}
-        {td.type === 'border_warning' && (
-          <div className="target-metrics">
-            <div className="metric-box">
-              <div className="metric-label">DISTANCE TO BORDER</div>
-              <div className="metric-val">{td.distance_to_border ? `${td.distance_to_border.toFixed(2)} NM` : 'Calculating...'}</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-label">CROSSING IN</div>
-              <div className="metric-val">{td.remaining_time ? `${td.remaining_time.toFixed(0)} seconds` : 'Immediate'}</div>
-            </div>
-          </div>
-        )}
-
-        {td.type === 'ais_loss' && (
-          <div className="target-metrics">
-            <div className="metric-box">
-              <div className="metric-label">TIME SILENT</div>
-              <div className="metric-val">{td.elapsed_time ? `${td.elapsed_time.toFixed(0)}s` : 'Unknown'}</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-label">ESTIMATED SEARCH AREA</div>
-              <div className="metric-val">{td.search_area_radius ? `Radius: ${td.search_area_radius.toFixed(3)} NM` : '0 NM'}</div>
-            </div>
-          </div>
-        )}
-
-        {td.type === 'loitering' && (
-          <div className="target-metrics">
-            <div className="metric-box">
-              <div className="metric-label">STATIONARY DURATION</div>
-              <div className="metric-val">{td.stationary_duration ? `${td.stationary_duration.toFixed(0)}s` : '0s'}</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-label">LOITER THRESHOLD</div>
-              <div className="metric-val">&lt; 2.0 knots</div>
-            </div>
-          </div>
-        )}
-
-        {td.type === 'cluster' && (
-          <div className="target-metrics">
-            <div className="metric-box">
-              <div className="metric-label">CLUSTER RADIUS / TIME</div>
-              <div className="metric-val">{td.cluster_radius}m / {td.cluster_duration ? `${td.cluster_duration.toFixed(0)}s` : '0s'}</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-label font-mono">SHIPS INVOLVED</div>
-              <div className="metric-val" style={{ fontSize: '0.75rem', lineHeight: 1.2 }}>
-                {td.ships_involved?.map(s => s.ship_name).join(' + ')}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {td.type === 'zone_warning' && (
-          <div className="target-metrics">
-            <div className="metric-box">
-              <div className="metric-label">BREACHED ZONE</div>
-              <div className="metric-val" style={{color: '#F03A2F'}}>{td.zone_name}</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-label">CONSEQUENCE</div>
-              <div className="metric-val" style={{color: '#F03A2F'}}>Restricted Area Violation</div>
-            </div>
-          </div>
-        )}
-
-        {/* Explainable Reasons */}
-        <div className="threat-reasons">
-          <div className="reasons-header">ALERT EXPLANATION & CONTEXT</div>
-          <div className="reasons-list">
-            {td.reasons?.map((reason, i) => (
-              <div key={i} className="reason-item">
-                <span className="reason-bullet">&#9642;</span> {reason}
-              </div>
-            ))}
-          </div>
+      <div className="threat-card-inner alert-data-view" style={{ background: '#111', color: '#FFF', padding: '1.5rem', marginTop: '1rem', border: '2px solid #F03A2F' }}>
+        <div style={{ color: '#F03A2F', fontSize: '1.2rem', fontWeight: 900, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span className="pulse-dot" style={{width: '12px', height: '12px', background: '#F03A2F', borderRadius: '50%', display: 'inline-block'}}></span>
+          HIGH PRIORITY ALERT
         </div>
-
-        {/* Recommended Action */}
-        <div className="threat-action">
-          <div className="action-header">RECOMMENDED INTERVENTION PROCEDURES</div>
-          <div className="action-content text-mono">{td.recommendation || 'Maintain standard radar telemetry monitoring.'}</div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+          <div style={{ color: '#AAA' }}>MMSI</div>
+          <div>: {v.mmsi}</div>
+          
+          <div style={{ color: '#AAA' }}>Type</div>
+          <div>: {alert?.alert_type?.replace('_', ' ').toUpperCase() || td?.type?.toUpperCase()}</div>
+          
+          <div style={{ color: '#AAA' }}>Risk Score</div>
+          <div style={{ color: getRiskColor(v) }}>: {alert?.risk_score || getRiskScore(v)}</div>
+          
+          <div style={{ color: '#AAA' }}>Confidence</div>
+          <div>: {alert?.confidence ? alert.confidence + '%' : '98%'}</div>
+          
+          <div style={{ color: '#AAA' }}>Processing Latency</div>
+          <div>: {getLatencyBadge(alert?.processing_latency_ms)}</div>
+          
+          <div style={{ color: '#AAA' }}>Detected At</div>
+          <div>: {alert ? new Date(alert.timestamp * 1000).toISOString().split('T')[1].replace('Z', '') + ' UTC' : new Date().toISOString().split('T')[1].replace('Z', '') + ' UTC'}</div>
+          
+          <div style={{ color: '#AAA' }}>Worker</div>
+          <div>: W-{alert?.worker_id || 0}</div>
+          
+          <div style={{ color: '#AAA' }}>Grid</div>
+          <div>: G-{v.cell_id || '145'}</div>
+          
+          <div style={{ color: '#AAA' }}>Speed</div>
+          <div>: {(v.sog || 0).toFixed(1)} knots</div>
+          
+          <div style={{ color: '#AAA' }}>Heading</div>
+          <div>: {(v.cog || 0).toFixed(0)}&deg;</div>
+          
+          <div style={{ color: '#AAA' }}>Weather</div>
+          <div>: {td?.weather_context || 'Moderate Sea State'}</div>
+          
+          <div style={{ color: '#AAA' }}>Status</div>
+          <div style={{ color: '#F03A2F', fontWeight: 900 }}>: ACTIVE</div>
         </div>
       </div>
     );
@@ -520,6 +488,15 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
           font-size: 0.8rem;
           color: #CC0000;
           font-weight: 700;
+        }
+        
+        .pulse-dot {
+          animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+          0% { box-shadow: 0 0 0 0 rgba(240, 58, 47, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(240, 58, 47, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(240, 58, 47, 0); }
         }
       `}</style>
     </div>

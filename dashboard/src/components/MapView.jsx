@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, Polygon, Polyline, Circle, Rectangle, useMap, GeoJSON } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, Polygon, Polyline, Circle, Rectangle, useMap, useMapEvents, GeoJSON, Marker } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-function MapController({ selectedMmsi, vessels }) {
-  const map = useMap();
+function MapController({ selectedMmsi, vessels, setBounds }) {
+  const map = useMapEvents({
+    moveend: () => setBounds(map.getBounds()),
+    zoomend: () => setBounds(map.getBounds()),
+  });
+  
+  useEffect(() => {
+    // Initial bounds on mount
+    setBounds(map.getBounds());
+  }, [map, setBounds]);
+
   useEffect(() => {
     if (selectedMmsi) {
       const v = vessels.find(v => String(v.mmsi) === String(selectedMmsi));
@@ -18,10 +28,15 @@ function MapController({ selectedMmsi, vessels }) {
 export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectVessel }) {
   const [config, setConfig] = useState(null);
   const [indiaGeoJson, setIndiaGeoJson] = useState(null);
+  const [mapBounds, setMapBounds] = useState(null);
 
-  const OCEAN_GRIDS = ["A01", "A02", "A03", "A04", "B01", "B02", "B03", "B04", "B05", "B15", "B16", "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C14", "C15", "C16", "C17", "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E11", "E12", "E13", "E14", "E15", "E16", "E17", "E18", "E19", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "G01", "G02", "G03", "G04", "G05", "G06", "G07", "G08", "G11", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "G20", "H01", "H02", "H03", "H04", "H05", "H06", "H07", "H08", "H09", "H10", "H11", "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19", "H20", "I01", "I02", "I03", "I04", "I05", "I06", "I07", "I08", "I09", "I10", "I11", "I12", "I13", "I14", "I15", "I16", "I17", "I18", "I19", "I20", "J01", "J02", "J03", "J04", "J05", "J06", "J07", "J08", "J09", "J10", "J11", "J12", "J13", "J14", "J15", "J16", "J17", "J18", "J19", "J20", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10", "K11", "K12", "K13", "K14", "K15", "K16", "K17", "K18", "K19", "K20", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17", "L18", "L19", "L20", "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17", "M18", "M19", "M20", "N01", "N02", "N03", "N04", "N05", "N06", "N07", "N08", "N09", "N10", "N11", "N12", "N13", "N14", "N15", "N16", "N17", "N18", "N19", "N20"];
-  const [showBuckets, setShowBuckets] = useState(false);
+  const OCEAN_GRIDS = ["B01", "B02", "B03", "C01", "C02", "C03", "C04", "D01", "D02", "D03", "D04", "D05", "D06", "D15", "D16", "E01", "E02", "E03", "E04", "E05", "E06", "E13", "E14", "E15", "E16", "E17", "F01", "F02", "F03", "F04", "F05", "F06", "F12", "F13", "F14", "F15", "F16", "F17", "G01", "G02", "G03", "G04", "G05", "G06", "G07", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "H01", "H02", "H03", "H04", "H05", "H06", "H07", "H11", "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19", "I01", "I02", "I03", "I04", "I05", "I06", "I07", "I08", "I12", "I13", "I14", "I15", "I16", "I17", "I18", "I19", "J01", "J02", "J03", "J04", "J05", "J06", "J07", "J08", "J12", "J13", "J14", "J15", "J16", "J17", "J18", "J19", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10", "K12", "K13", "K14", "K15", "K16", "K17", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17", "L18", "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17", "M18", "M19", "N01", "N02", "N03", "N04", "N05", "N06", "N07", "N08", "N09", "N10", "N11", "N12", "N13", "N14", "N15", "N16", "N17", "N18", "N19"];
+  const [showBuckets, setShowBuckets] = useState(true);
   const selectedVessel = vessels.find(v => String(v.mmsi) === String(selectedMmsi));
+  
+  const visibleVessels = mapBounds 
+    ? vessels.filter(v => mapBounds.contains([v.lat, v.lon]) || String(v.mmsi) === String(selectedMmsi))
+    : vessels;
 
   useEffect(() => {
     fetch('http://localhost:8080/api/config')
@@ -57,23 +72,7 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
 
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
-      <div style={{ position: 'absolute', top: 20, left: 60, zIndex: 1000 }}>
-        <button 
-          onClick={() => setShowBuckets(!showBuckets)}
-          style={{
-            background: '#000',
-            color: '#FFF',
-            border: '2px solid #FFF',
-            padding: '8px 12px',
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            boxShadow: '2px 2px 0px rgba(0,0,0,0.5)'
-          }}
-        >
-          {showBuckets ? 'DISABLE THREAT BUCKETS' : 'ENABLE THREAT BUCKETS'}
-        </button>
-      </div>
+      {/* Grid Always Active */}
       <MapContainer 
         center={[15.0, 75.0]} 
         zoom={5} 
@@ -85,7 +84,7 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
           url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         />
-        <MapController selectedMmsi={selectedMmsi} vessels={vessels} />
+        <MapController selectedMmsi={selectedMmsi} vessels={vessels} setBounds={setMapBounds} />
         
         {indiaGeoJson && (
           <GeoJSON 
@@ -116,15 +115,15 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
               key={grid_id}
               bounds={[[lat_min, lon_min], [lat_max, lon_max]]}
               pathOptions={{ 
-                color, 
+                color: hasVessels || isStormy ? color : '#6A9BC3', 
                 fillColor: color, 
                 weight: hasVessels || isStormy ? 1.5 : 1, 
-                fillOpacity: isStormy ? 0.3 : (hasVessels ? 0.15 : 0.02),
+                fillOpacity: isStormy ? 0.3 : (hasVessels ? 0.15 : 0.0),
                 dashArray: hasVessels || isStormy ? '' : '5 5'
               }}
             >
               <Tooltip permanent direction="center" className="grid-tooltip">
-                <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: hasVessels || isStormy ? '#fff' : '#2A82DA', textShadow: hasVessels || isStormy ? '1px 1px 2px #000' : 'none' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: hasVessels || isStormy ? '#fff' : '#4A7A9C', textShadow: hasVessels || isStormy ? '1px 1px 2px #000' : 'none', opacity: 0.8 }}>
                   {grid_id}
                 </span>
               </Tooltip>
@@ -145,6 +144,22 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
               </Popup>
             </Rectangle>
           );
+        })}
+
+        {/* AXIS LABELS */}
+        {showBuckets && Array.from({length: 14}).map((_, i) => {
+          const char = String.fromCharCode(65 + i); // A to N
+          const lat = 26.0 - i * 2.0 - 1.0;
+          return (
+             <Marker key={`row-${char}`} position={[lat, 59.0]} icon={L.divIcon({html: `<div style="font-weight:900; color:#1f3a5f; font-family:var(--font-sans); font-size: 1rem;">${char}</div>`, className: 'axis-label', iconSize: [20, 20]})} />
+          )
+        })}
+        {showBuckets && Array.from({length: 20}).map((_, i) => {
+          const numStr = (i + 1).toString().padStart(2, '0');
+          const lon = 60.0 + i * 2.0 + 1.0;
+          return (
+             <Marker key={`col-${numStr}`} position={[27.0, lon]} icon={L.divIcon({html: `<div style="font-weight:900; color:#1f3a5f; font-family:var(--font-sans); font-size: 1rem;">${numStr}</div>`, className: 'axis-label', iconSize: [20, 20]})} />
+          )
         })}
         
         {config?.zones?.map((zone, idx) => {
@@ -179,7 +194,7 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
           );
         })}
 
-        {vessels.flatMap(v => {
+        {visibleVessels.flatMap(v => {
           const elements = [];
           
           // Render search area for lost AIS vessels
@@ -410,6 +425,13 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
         .tactical-popup .popup-stat span:first-child {
           color: #666666;
           font-weight: 700;
+        }
+        .axis-label {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: none;
         }
       `}</style>
     </div>
