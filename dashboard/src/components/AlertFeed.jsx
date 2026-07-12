@@ -67,16 +67,6 @@ export default function AlertFeed({ alerts }) {
             const styles = getSeverityStyles(alert.severity);
             return (
               <div key={alert.id} className={`alert-card ${alert.priority === 1 ? 'critical-pulse' : ''}`} style={{ borderLeftColor: styles.border }}>
-                <div className="latency-score">
-                  <div className="latency-score-box">
-                    {(() => {
-                      const raw = alert?.processing_latency_ms ?? alert?.latency_ms ?? alert?.latency ?? null;
-                      const n = Number(raw);
-                      if (!raw || Number.isNaN(n) || n <= 0) return 'PENDING';
-                      return `${n.toFixed(2)} ms`;
-                    })()}
-                  </div>
-                </div>
                 <div className="alert-top text-mono">
                   <span className="alert-severity" style={{ color: styles.color }}>
                     {getSeverityIcon(alert.severity)} {alert.severity.toUpperCase()}
@@ -85,7 +75,7 @@ export default function AlertFeed({ alerts }) {
                 </div>
                 
                 <div className="alert-type text-sans font-semibold color-primary">
-                  {alert.alert_type.replace('_', ' ').toUpperCase()}
+                  {(alert.alert_type || 'THREAT').replace(/_/g, ' ').toUpperCase()}
                 </div>
                 
                 <div className="alert-desc text-sans color-secondary">
@@ -209,21 +199,6 @@ export default function AlertFeed({ alerts }) {
           font-weight: 700;
           letter-spacing: 0.03em;
           background: rgba(255, 255, 255, 0.04);
-        }
-        .latency-score {
-          position: absolute;
-          top: 8px;
-          right: 58px; /* offset to avoid overlapping the SCORE box */
-          z-index: 5;
-        }
-        .latency-score-box {
-          background: #000;
-          color: #fff;
-          padding: 0.22rem 0.5rem;
-          border-radius: 4px;
-          font-weight: 800;
-          font-size: 0.78rem;
-          box-shadow: 0 2px 0 rgba(0,0,0,0.35);
         }
       `}</style>
     </div>

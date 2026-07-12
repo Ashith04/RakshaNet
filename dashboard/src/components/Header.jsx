@@ -23,10 +23,8 @@ export default function Header({ viewMode, setViewMode }) {
           <div className={`nav-link ${viewMode === 'map' ? 'active' : ''}`} onClick={() => setViewMode('map')}>Operator<br/>Command Hub</div>
           <div className={`nav-link ${viewMode === 'data' ? 'active' : ''}`} onClick={() => setViewMode('data')}>Voyage<br/>Registers &<br/>Step 0</div>
           <div className={`nav-link ${viewMode === 'scoring' ? 'active' : ''}`} onClick={() => setViewMode('scoring')}>RPI<br/>Fleet<br/>Scoring</div>
-          <div className="nav-link">Drift<br/>Grid<br/>Overlay</div>
           <div className={`nav-link ${viewMode === 'simultaneous' ? 'active' : ''}`} onClick={() => setViewMode('simultaneous')}>Simultaneous<br/>Alerts</div>
           <div className={`nav-link ${viewMode === 'threat' ? 'active' : ''}`} onClick={() => setViewMode('threat')}>AIS<br/>Threat<br/>Monitor</div>
-          <div className="nav-link">Family<br/>Tracking<br/>Link</div>
         </nav>
         
         <div className="header-actions">

@@ -27,6 +27,8 @@ pub struct DashboardState {
     pub alert_broadcast: broadcast::Sender<Alert>,
     pub alert_history: AlertHistory,
     pub bounding_box: BoundingBox,
+    pub weather_cache: crate::weather_service::WeatherCache,
+    pub pre_departure_cache: crate::pre_departure::PreDepartureCache,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -49,6 +51,8 @@ pub async fn run(state: DashboardState, listen_addr: String) {
         .route("/ws/vessels", get(ws_vessels_handler))
         .route("/api/stats", get(stats_handler))
         .route("/api/config", get(config_handler))
+        .route("/api/weather", get(weather_handler))
+        .route("/api/pre-departure", get(pre_departure_handler))
         .layer(cors)
         .with_state(state);
 
@@ -148,6 +152,10 @@ async fn handle_vessel_socket(socket: WebSocket, state: DashboardState) {
 struct StatsResponse {
     messages_per_second: u64,
     avg_latency_us: u64,
+    p50_latency_us: u64,
+    p95_latency_us: u64,
+    p99_latency_us: u64,
+    alerts_total: u64,
     active_vessels: u64,
     alerts_last_minute: u64,
     source: String,
@@ -158,6 +166,10 @@ async fn stats_handler(State(state): State<DashboardState>) -> Json<StatsRespons
     Json(StatsResponse {
         messages_per_second: m.messages_per_second.load(Ordering::Relaxed),
         avg_latency_us: m.avg_latency_us(),
+        p50_latency_us: m.p50_latency_us.load(Ordering::Relaxed),
+        p95_latency_us: m.p95_latency_us.load(Ordering::Relaxed),
+        p99_latency_us: m.p99_latency_us.load(Ordering::Relaxed),
+        alerts_total: m.alerts_total.load(Ordering::Relaxed),
         active_vessels: m.active_vessels.load(Ordering::Relaxed),
         alerts_last_minute: m.alerts_last_minute.load(Ordering::Relaxed),
         source: m.current_source().to_string(),
@@ -177,4 +189,16 @@ async fn config_handler(State(state): State<DashboardState>) -> Json<ConfigRespo
         zones: state.spatial.get_zones(),
         bounding_box: state.bounding_box.clone(),
     })
+}
+
+// ─── REST: Weather Cache ───────────────────────────────────────────
+async fn weather_handler(State(state): State<DashboardState>) -> Json<std::collections::HashMap<u32, crate::weather_service::WeatherData>> {
+    let cache = state.weather_cache.read().unwrap();
+    Json(cache.clone())
+}
+
+// ─── REST: Pre-Departure Cache ─────────────────────────────────────
+async fn pre_departure_handler(State(state): State<DashboardState>) -> Json<std::collections::HashMap<u32, crate::pre_departure::PreDepartureReport>> {
+    let cache = state.pre_departure_cache.read().unwrap();
+    Json(cache.clone())
 }

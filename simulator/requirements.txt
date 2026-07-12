@@ -1,0 +1,8 @@
+# Maritime AIS Simulator
+# ---------------------
+# No external dependencies required.
+# This simulator uses only Python standard library modules:
+#   socket, json, time, random, math, argparse, datetime
+#
+# Usage:
+#   python simulator.py --rate 1000 --target 127.0.0.1:9000 --vessels 500 --duration 60

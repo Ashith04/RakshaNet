@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use crate::config::DetectionConfig;
 use crate::spatial_index::{haversine_nm, SpatialIndex};
 use crate::types::*;
+use std::sync::RwLock;
+use crate::spoofing_detection;
 
 /// Run all detection checks for a single incoming message.
 /// Returns a list of alerts (may be empty).
@@ -13,21 +15,42 @@ pub fn run_detections(
     spatial: &SpatialIndex,
     config: &DetectionConfig,
     rendezvous_tracker: &mut HashMap<(u32, u32), i64>,
+    mmsi_tracker: &RwLock<HashMap<u32, (usize, i64, f64, f64)>>,
+    worker_id: usize,
 ) -> Vec<Alert> {
     let mut alerts = Vec::new();
     let now = msg.timestamp;
 
-    // 1. Geofence violation
-    check_geofence(msg, vessel, spatial, config, now, &mut alerts);
+    // ---------------------------------------------------------
+    // STAGE 2: Lightweight Detection
+    // ---------------------------------------------------------
+    // If the vessel is moving super slowly and is far from any geofence, we don't need heavy PIP or R-tree checks
+    let is_suspicious = msg.sog < 1.0 || msg.sog > 40.0;
+    // Fast bounding-box check (no polygons):
+    let near_zone = spatial.distance_to_nearest_zone_nm(msg.longitude, msg.latitude) < 20.0;
 
-    // 2. Loitering
+    // 2. Loitering (Lightweight)
     check_loitering(msg, vessel, config, now, &mut alerts);
 
-    // 3. Speed anomaly
-    check_speed_anomaly(msg, vessel, config, now, &mut alerts);
+    // 3. Spoofing Detection (Lightweight hashmap checks)
+    if let Some(spoof_alert) = spoofing_detection::check_spoofing(msg, vessel, &config.spoofing, mmsi_tracker, worker_id) {
+        alerts.push(spoof_alert);
+    }
 
-    // 4. Rendezvous (proximity check against nearby vessels)
-    check_rendezvous(msg, vessel, vessels, config, now, rendezvous_tracker, &mut alerts);
+    let needs_heavy = is_suspicious || near_zone || !alerts.is_empty() || vessel.status == VesselStatus::Warning;
+
+    // ---------------------------------------------------------
+    // STAGE 3, 4, 5: Heavy Spatial Analysis & Context Engine
+    // ---------------------------------------------------------
+    if needs_heavy {
+        // 1. Geofence is handled directly in worker.rs Fast Path (Stage 1)
+        
+        // 4. Rendezvous (R-Tree / loop over nearby vessels)
+        check_rendezvous(msg, vessel, vessels, config, now, rendezvous_tracker, &mut alerts);
+        
+        // Stage 4 & 5 (Context Engine and Risk Scoring) are implicitly handled 
+        // within the alert generation functions which query weather/history cache.
+    }
 
     alerts
 }
@@ -80,39 +103,6 @@ pub fn check_ais_gap(
 
 // ─── Individual detection checks ────────────────────────────────
 
-fn check_geofence(
-    msg: &AisMessage,
-    vessel: &mut VesselState,
-    spatial: &SpatialIndex,
-    config: &DetectionConfig,
-    now: i64,
-    alerts: &mut Vec<Alert>,
-) {
-    let violated_zones = spatial.check_geofences(msg.longitude, msg.latitude);
-
-    for zone_name in violated_zones {
-        if !vessel.check_cooldown(AlertType::GeofenceViolation, now, 60_000) {
-            continue;
-        }
-
-        let mut alert = Alert::new(
-            AlertType::GeofenceViolation,
-            msg.mmsi,
-            msg.latitude,
-            msg.longitude,
-            Severity::Critical,
-            format!(
-                "Vessel {} entered restricted zone '{}' at ({:.4}, {:.4}), SOG: {:.1} kts",
-                msg.mmsi, zone_name, msg.latitude, msg.longitude, msg.sog
-            ),
-        );
-        alert.zone_name = Some(zone_name.to_string());
-
-        vessel.set_cooldown(AlertType::GeofenceViolation, now);
-        vessel.set_status(VesselStatus::Violation);
-        alerts.push(alert);
-    }
-}
 
 fn check_loitering(
     msg: &AisMessage,
@@ -158,61 +148,7 @@ fn check_loitering(
     }
 }
 
-fn check_speed_anomaly(
-    msg: &AisMessage,
-    vessel: &mut VesselState,
-    config: &DetectionConfig,
-    now: i64,
-    alerts: &mut Vec<Alert>,
-) {
-    let ac = &config.anomaly;
 
-    // Check reported SOG
-    if msg.sog > ac.max_speed_knots {
-        if vessel.check_cooldown(AlertType::SpeedAnomaly, now, 60_000) {
-            let alert = Alert::new(
-                AlertType::SpeedAnomaly,
-                msg.mmsi,
-                msg.latitude,
-                msg.longitude,
-                Severity::High,
-                format!(
-                    "Vessel {} reported impossible SOG: {:.1} kts (max: {:.1})",
-                    msg.mmsi, msg.sog, ac.max_speed_knots
-                ),
-            );
-            vessel.set_cooldown(AlertType::SpeedAnomaly, now);
-            alerts.push(alert);
-        }
-    }
-
-    // Check implied speed from position jump
-    if let Some(prev) = vessel.history.iter().rev().nth(1) {
-        let dt_secs = (msg.timestamp - prev.timestamp) as f64 / 1000.0;
-        if dt_secs > 0.0 {
-            let dist_nm = haversine_nm(prev.lat, prev.lon, msg.latitude, msg.longitude);
-
-            if dist_nm > ac.max_jump_nm {
-                if vessel.check_cooldown(AlertType::SpeedAnomaly, now, 60_000) {
-                    let implied_speed = dist_nm / (dt_secs / 3600.0);
-                    let alert = Alert::new(
-                        AlertType::SpeedAnomaly,
-                        msg.mmsi,
-                        msg.latitude,
-                        msg.longitude,
-                        Severity::Critical,
-                        format!(
-                            "Vessel {} position jump: {:.1} nm in {:.0}s (implied {:.0} kts) — possible spoofing",
-                            msg.mmsi, dist_nm, dt_secs, implied_speed
-                        ),
-                    );
-                    vessel.set_cooldown(AlertType::SpeedAnomaly, now);
-                    alerts.push(alert);
-                }
-            }
-        }
-    }
-}
 
 fn check_rendezvous(
     msg: &AisMessage,

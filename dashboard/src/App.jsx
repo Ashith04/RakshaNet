@@ -9,17 +9,40 @@ import AlertToast from './components/AlertToast';
 import SimultaneousAlerts from './components/SimultaneousAlerts';
 import FleetScoring from './components/FleetScoring';
 import GridAnalytics from './components/GridAnalytics';
+import PreDepartureView from './components/PreDepartureView';
 import './App.css';
 
 export default function App() {
   const [vessels, setVessels] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [buckets, setBuckets] = useState([]);
+  const [weatherData, setWeatherData] = useState({});
+  const [preDepartureData, setPreDepartureData] = useState({});
+  const [showWeatherLayer, setShowWeatherLayer] = useState(true);
   const [isBooting, setIsBooting] = useState(true);
   const [viewMode, setViewMode] = useState('threat');
   const [selectedMmsi, setSelectedMmsi] = useState(null);
 
-  const [latestCriticalAlert, setLatestCriticalAlert] = useState(null);
+  const [latestToastAlert, setLatestToastAlert] = useState(null);
+
+  // Weather polling
+  useEffect(() => {
+    if (isBooting) return;
+    const fetchWeather = async () => {
+      try {
+        const res = await fetch('http://localhost:8080/api/weather');
+        if (res.ok) setWeatherData(await res.json());
+      } catch (err) { console.error(err); }
+      
+      try {
+        const res2 = await fetch('http://localhost:8080/api/pre-departure');
+        if (res2.ok) setPreDepartureData(await res2.json());
+      } catch (err) { console.error(err); }
+    };
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 120000); // 2 minutes
+    return () => clearInterval(interval);
+  }, [isBooting]);
 
   useEffect(() => {
     // Only connect websockets after boot sequence
@@ -34,8 +57,8 @@ export default function App() {
     const wsAlerts = new WebSocket('ws://localhost:8080/ws/alerts');
     wsAlerts.onmessage = (event) => {
       const newAlert = JSON.parse(event.data);
-      if (newAlert.severity === 'critical') {
-        setLatestCriticalAlert(newAlert);
+      if (newAlert.severity === 'critical' || newAlert.severity === 'warning') {
+        setLatestToastAlert(newAlert);
       }
       setAlerts(prev => {
         const updated = [newAlert, ...prev];
@@ -61,10 +84,19 @@ export default function App() {
     return <SplashScreen onComplete={() => setIsBooting(false)} />;
   }
 
+  const augmentedVessels = vessels.map(v => {
+    // Check if there is a recent critical alert for this vessel (within last 30 seconds)
+    const recentAlert = alerts.find(a => a.mmsi === v.mmsi && (Date.now() - a.timestamp) < 30000);
+    if (recentAlert) {
+      return { ...v, status: recentAlert.severity === 'critical' ? 'critical' : 'warning' };
+    }
+    return v;
+  });
+
   return (
     <div className="app-container">
       <AlertToast 
-        latestAlert={latestCriticalAlert} 
+        latestAlert={latestToastAlert} 
         onClick={(alert) => {
           setSelectedMmsi(alert.mmsi);
           setViewMode('map');
@@ -94,10 +126,28 @@ export default function App() {
                 <div className={`nav-item ${viewMode === 'data' ? 'active' : ''}`} onClick={() => setViewMode('data')}>VESSEL DATABASE</div>
                 <div className={`nav-item ${viewMode === 'scoring' ? 'active' : ''}`} onClick={() => setViewMode('scoring')}>FLEET SCORING</div>
                 <div className={`nav-item ${viewMode === 'simultaneous' ? 'active' : ''}`} onClick={() => setViewMode('simultaneous')}>SIMULTANEOUS ALERTS</div>
-                <div className="nav-item">RPI TRIAGE MATRIX</div>
-                <div className="nav-item">DRIFT GRID MAP</div>
                 <div className={`nav-item ${viewMode === 'threat' ? 'active' : ''}`} onClick={() => setViewMode('threat')}>AIS THREAT MONITOR</div>
-                <div className="nav-item">SHARE FAMILY LINK</div>
+                <div className={`nav-item ${viewMode === 'pre_departure' ? 'active' : ''}`} onClick={() => setViewMode('pre_departure')} style={{ color: '#00E5FF', borderLeft: viewMode==='pre_departure' ? '3px solid #00E5FF' : 'none' }}>PRE-DEPARTURE INTELLIGENCE</div>
+                
+                <div style={{ marginTop: '20px', padding: '0 20px' }}>
+                  <button 
+                    className={`weather-toggle ${showWeatherLayer ? 'active' : ''}`} 
+                    onClick={() => setShowWeatherLayer(!showWeatherLayer)}
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      backgroundColor: showWeatherLayer ? '#8A2BE2' : '#333',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    WEATHER: {showWeatherLayer ? 'ON' : 'OFF'}
+                  </button>
+                </div>
               </div>
               
               <div className="sidebar-footer">
@@ -113,8 +163,10 @@ export default function App() {
             <div className="content-area">
               {viewMode === 'threat' && (
                 <TargetDesk 
-                  vessels={vessels} 
+                  vessels={augmentedVessels} 
                   alerts={alerts} 
+                  weatherData={weatherData}
+                  preDepartureData={preDepartureData}
                   selectedMmsi={selectedMmsi} 
                   setSelectedMmsi={setSelectedMmsi} 
                 />
@@ -123,8 +175,10 @@ export default function App() {
                 <>
                   <GridAnalytics buckets={buckets} />
                   <MapView 
-                    vessels={vessels} 
+                    vessels={augmentedVessels} 
                     buckets={buckets}
+                    weatherData={weatherData}
+                    showWeatherLayer={showWeatherLayer}
                     selectedMmsi={selectedMmsi}
                     onSelectVessel={(mmsi) => {
                       setSelectedMmsi(mmsi);
@@ -135,7 +189,7 @@ export default function App() {
               )}
               {viewMode === 'data' && (
                 <DataView 
-                  vessels={vessels} 
+                  vessels={augmentedVessels} 
                   onSelectVessel={(mmsi) => {
                     setSelectedMmsi(mmsi);
                     setViewMode('map');
@@ -144,7 +198,8 @@ export default function App() {
               )}
               {viewMode === 'simultaneous' && (
                 <SimultaneousAlerts 
-                  vessels={vessels} 
+                  vessels={augmentedVessels} 
+                  alerts={alerts}
                   onSelectAlert={(mmsi) => {
                     setSelectedMmsi(mmsi);
                     setViewMode('map');
@@ -158,6 +213,13 @@ export default function App() {
                     setSelectedMmsi(mmsi);
                     setViewMode('map');
                   }}
+                />
+              )}
+              {viewMode === 'pre_departure' && (
+                <PreDepartureView 
+                  vessels={augmentedVessels} 
+                  preDepartureData={preDepartureData}
+                  weatherData={weatherData}
                 />
               )}
             </div>

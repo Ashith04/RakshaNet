@@ -1,14 +1,33 @@
 import React, { useState } from 'react';
 import MapView from './MapView';
 
-export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedMmsi }) {
+export default function TargetDesk({ vessels, alerts, weatherData, preDepartureData, selectedMmsi, setSelectedMmsi }) {
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Helper to map lat/lon to grid cell ID exactly like backend
+  const getCellId = (lat, lon) => {
+    const lat_min = -2.0, lat_max = 26.0, lon_min = 60.0, lon_max = 100.0;
+    const lat_divs = 14, lon_divs = 20;
+    const lat_step = (lat_max - lat_min) / lat_divs;
+    const lon_step = (lon_max - lon_min) / lon_divs;
+    
+    let lat_bucket = Math.floor((lat - lat_min) / lat_step);
+    let lon_bucket = Math.floor((lon - lon_min) / lon_step);
+    
+    lat_bucket = Math.max(0, Math.min(lat_bucket, lat_divs - 1));
+    lon_bucket = Math.max(0, Math.min(lon_bucket, lon_divs - 1));
+    
+    return lat_bucket * lon_divs + lon_bucket;
+  };
   
   // Find highest risk vessel or search match
   const targetVessel = vessels.find(v => v.mmsi === selectedMmsi) || 
                        vessels.find(v => v.mmsi.toString().includes(searchQuery)) || 
                        vessels.find(v => v.status === 'geofence_violation' || v.status === 'loitering' || v.status === 'ais_gap' || v.status === 'rendezvous') || 
                        vessels[0];
+
+  const vesselWeather = targetVessel && weatherData ? weatherData[getCellId(targetVessel.lat, targetVessel.lon)] : null;
+  const vesselPreDeparture = targetVessel && preDepartureData ? preDepartureData[targetVessel.mmsi] : null;
 
   const getRiskScore = (v) => {
     if (v.threat_data?.risk_score) {
@@ -87,7 +106,9 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
           <div>: {alert?.confidence ? alert.confidence + '%' : '98%'}</div>
           
           <div style={{ color: '#AAA' }}>Processing Latency</div>
-          <div>: {getLatencyBadge(alert?.processing_latency_ms)}</div>
+          <div style={{ color: '#00FF00' }}>
+            : {alert?.processing_latency_ms < 0.01 ? '< 0.01' : alert?.processing_latency_ms?.toFixed(2) || 'N/A'} ms
+          </div>
           
           <div style={{ color: '#AAA' }}>Detected At</div>
           <div>: {alert ? new Date(alert.timestamp * 1000).toISOString().split('T')[1].replace('Z', '') + ' UTC' : new Date().toISOString().split('T')[1].replace('Z', '') + ' UTC'}</div>
@@ -104,12 +125,27 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
           <div style={{ color: '#AAA' }}>Heading</div>
           <div>: {(v.cog || 0).toFixed(0)}&deg;</div>
           
-          <div style={{ color: '#AAA' }}>Weather</div>
-          <div>: {td?.weather_context || 'Moderate Sea State'}</div>
-          
           <div style={{ color: '#AAA' }}>Status</div>
           <div style={{ color: '#F03A2F', fontWeight: 900 }}>: ACTIVE</div>
         </div>
+        
+        {alert?.weather_context && (
+          <div style={{ marginTop: '1rem', padding: '1rem', background: '#1A1A1A', border: '1px solid #444', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            <div style={{ color: '#00C853', fontWeight: 900, marginBottom: '0.5rem', fontSize: '1rem' }}>WEATHER CONTEXT</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '0.5rem' }}>
+              <div style={{ color: '#AAA' }}>Wind Speed</div>
+              <div>: {alert.weather_context.wind_speed.toFixed(1)} km/h</div>
+              <div style={{ color: '#AAA' }}>Wave Height</div>
+              <div>: {alert.weather_context.wave_height.toFixed(1)} m</div>
+              <div style={{ color: '#AAA' }}>Visibility</div>
+              <div>: {alert.weather_context.visibility}</div>
+              <div style={{ color: '#AAA' }}>Storm</div>
+              <div style={{ color: alert.weather_context.storm ? '#F03A2F' : 'inherit' }}>: {alert.weather_context.storm ? 'Yes' : 'No'}</div>
+              <div style={{ color: '#AAA', marginTop: '0.5rem' }}>Weather Impact</div>
+              <div style={{ color: '#FFB703', fontWeight: 'bold', marginTop: '0.5rem' }}>: {alert.weather_context.weather_impact}</div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -210,6 +246,37 @@ export default function TargetDesk({ vessels, alerts, selectedMmsi, setSelectedM
               vessels={vessels.filter(v => !searchQuery || v.mmsi.toString().includes(searchQuery))} 
               onSelectVessel={setSelectedMmsi}
             />
+            {vesselWeather && (
+              <div className="telemetry-card alert-context" style={{padding: '1rem', background: '#f9f9f9', borderTop: '2px solid #000'}}>
+                <div className="card-header" style={{ color: vesselWeather.is_storm ? '#8A2BE2' : '#FFB703', fontWeight: 'bold' }}>WEATHER INFORMATION</div>
+                <div className="grid-2-col" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem'}}>
+                  <div className="stat-row"><span>Wind Speed:</span> {(vesselWeather.wind_speed_kmh).toFixed(1)} km/h</div>
+                  <div className="stat-row"><span>Visibility:</span> {(vesselWeather.visibility_m / 1000).toFixed(1)} km</div>
+                  <div className="stat-row"><span>Storm:</span> {vesselWeather.is_storm ? 'YES' : 'NO'}</div>
+                  <div className="stat-row"><span>Sea State:</span> {vesselWeather.is_storm ? 'Rough' : vesselWeather.wind_speed_kmh > 40 ? 'Rough' : 'Moderate'}</div>
+                </div>
+                {vesselWeather.is_storm && (
+                  <div style={{ marginTop: '10px', color: '#8A2BE2', fontWeight: 'bold' }}>
+                    Weather Impact: Possible Weather Assisted Deviation
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {vesselPreDeparture && (
+              <div className="telemetry-card alert-context" style={{padding: '1rem', background: '#e3f2fd', borderTop: '2px solid #000', marginTop: '1rem'}}>
+                <div className="card-header" style={{ color: '#0277bd', fontWeight: 'bold' }}>PRE-DEPARTURE INTELLIGENCE</div>
+                <div className="grid-2-col" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem'}}>
+                  <div className="stat-row"><span>Planned Route:</span> {vesselPreDeparture.departure_port} &rarr; {vesselPreDeparture.destination_port}</div>
+                  <div className="stat-row"><span>ETA:</span> {vesselPreDeparture.eta_hours} Hours</div>
+                  <div className="stat-row"><span>Overall Voyage Risk:</span> {vesselPreDeparture.overall_voyage_risk}%</div>
+                  <div className="stat-row"><span>Historical Behaviour:</span> {vesselPreDeparture.historical_behaviour}</div>
+                </div>
+                <div style={{ marginTop: '10px', color: '#01579b', fontWeight: 'bold' }}>
+                  Recommendation: {vesselPreDeparture.recommended_monitoring} Monitoring
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

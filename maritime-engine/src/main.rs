@@ -5,10 +5,13 @@ mod dashboard_server;
 mod detection;
 mod dispatcher;
 mod metrics;
+mod pre_departure;
 mod simulator_listener;
+mod spoofing_detection;
 mod spatial_index;
 mod types;
 mod vessel_state;
+mod weather_service;
 mod worker;
 
 use std::collections::HashMap;
@@ -97,10 +100,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create shared vessel snapshots (for dashboard)
     let vessel_snapshots: Arc<RwLock<HashMap<u32, VesselSnapshot>>> =
         Arc::new(RwLock::new(HashMap::new()));
+        
+    // Create shared MMSI tracker for spoofing detection
+    let mmsi_tracker: Arc<RwLock<HashMap<u32, (usize, i64, f64, f64)>>> = 
+        Arc::new(RwLock::new(HashMap::new()));
+        
+    // Create shared Weather cache
+    let weather_cache: weather_service::WeatherCache = Arc::new(RwLock::new(HashMap::new()));
+    
+    // Spawn weather updater task
+    let wc_clone = weather_cache.clone();
+    let grid_clone = grid.clone();
+    tokio::spawn(async move {
+        weather_service::run_weather_updater(wc_clone, grid_clone).await;
+    });
+
+    // Create shared Pre-Departure cache
+    let pre_departure_cache: pre_departure::PreDepartureCache = Arc::new(RwLock::new(HashMap::new()));
+    
+    // Spawn Pre-Departure analyzer
+    let pd_cache_clone = pre_departure_cache.clone();
+    let pd_vessels_clone = vessel_snapshots.clone();
+    let pd_wc_clone = weather_cache.clone();
+    let pd_grid_clone = grid.clone();
+    tokio::spawn(async move {
+        pre_departure::run_analyzer(pd_cache_clone, pd_vessels_clone, pd_wc_clone, pd_grid_clone).await;
+    });
 
     // Create channels
     let (ingestion_tx, ingestion_rx) = mpsc::channel::<types::AisMessage>(DISPATCHER_CHANNEL_SIZE);
-    let (alert_tx, alert_rx) = mpsc::channel::<types::Alert>(ALERT_CHANNEL_SIZE);
+    let (alert_tx_high, alert_rx_high) = mpsc::channel::<types::Alert>(ALERT_CHANNEL_SIZE);
+    let (alert_tx_low, alert_rx_low) = mpsc::channel::<types::Alert>(ALERT_CHANNEL_SIZE);
     let (alert_broadcast_tx, _) = broadcast::channel::<types::Alert>(ALERT_BROADCAST_SIZE);
     let alert_history = AlertHistory::new();
 
@@ -115,11 +145,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let worker = Worker::new(
             i,
             wrx,
-            alert_tx.clone(),
+            alert_tx_high.clone(),
+            alert_tx_low.clone(),
             spatial.clone(),
             config.detection.clone(),
             metrics.clone(),
             vessel_snapshots.clone(),
+            mmsi_tracker.clone(),
+            weather_cache.clone(),
+            grid.clone(),
             config.engine.gap_scan_interval_secs,
             config.engine.vessel_ttl_secs,
         );
@@ -128,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Spawn dispatcher
-    let dispatcher = Dispatcher::new(grid, worker_txs);
+    let dispatcher = Dispatcher::new(grid, worker_txs, config.geohash_precision);
     let dispatcher_handle = tokio::spawn(dispatcher.run(ingestion_rx));
 
     // Spawn aisstream client (if API key available)
@@ -148,12 +182,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Spawn alerter
-    let alerter_broadcast = alert_broadcast_tx.clone();
-    let alerter_history = alert_history.clone();
-    let alerter_metrics = metrics.clone();
-    tokio::spawn(async move {
-        alerting::run_alerter(alert_rx, alerter_broadcast, alerter_history, alerter_metrics).await;
-    });
+    let alerter_handle = tokio::spawn(alerting::run_alerter(
+        alert_rx_high,
+        alert_rx_low,
+        alert_broadcast_tx.clone(),
+        alert_history.clone(),
+        metrics.clone(),
+    ));
 
     // Spawn metrics aggregator
     metrics::spawn_metrics_aggregator(metrics.clone());
@@ -171,6 +206,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lat_max,
             lon_max,
         },
+        weather_cache: weather_cache.clone(),
+        pre_departure_cache: pre_departure_cache.clone(),
     };
     let dashboard_addr = config.engine.dashboard_addr.clone();
     tokio::spawn(async move {

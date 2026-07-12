@@ -25,7 +25,7 @@ function MapController({ selectedMmsi, vessels, setBounds }) {
   return null;
 }
 
-export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectVessel }) {
+export default function MapView({ vessels, buckets = [], weatherData, showWeatherLayer, selectedMmsi, onSelectVessel }) {
   const [config, setConfig] = useState(null);
   const [indiaGeoJson, setIndiaGeoJson] = useState(null);
   const [mapBounds, setMapBounds] = useState(null);
@@ -92,6 +92,54 @@ export default function MapView({ vessels, buckets = [], selectedMmsi, onSelectV
             style={{ color: '#000', weight: 1.5, fillOpacity: 0, opacity: 0.5 }} 
           />
         )}
+        
+        {showWeatherLayer && Object.entries(weatherData || {}).map(([cellId, weather]) => {
+          const id = parseInt(cellId);
+          const grid_lon_divs = 20;
+          const lat_min = -2.0;
+          const lon_min = 60.0;
+          const lat_step = 2.0;
+          const lon_step = 2.0;
+
+          const row = Math.floor(id / grid_lon_divs);
+          const col = id % grid_lon_divs;
+          
+          const cell_lat_min = lat_min + row * lat_step;
+          const cell_lat_max = cell_lat_min + lat_step;
+          const cell_lon_min = lon_min + col * lon_step;
+          const cell_lon_max = cell_lon_min + lon_step;
+          
+          let color = '#00C853'; 
+          let opacity = 0.05;
+          
+          if (weather.is_storm) {
+            color = '#8A2BE2';
+            opacity = 0.25;
+          } else if (weather.wind_speed_kmh > 40) {
+            color = '#FF5722';
+            opacity = 0.2;
+          } else if (weather.wind_speed_kmh > 20) {
+            color = '#FFB703';
+            opacity = 0.15;
+          } else {
+            return null;
+          }
+
+          return (
+            <Rectangle
+              key={`weather-${id}`}
+              bounds={[[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]]}
+              pathOptions={{ color, fillColor: color, fillOpacity: opacity, weight: 0 }}
+            >
+              <Tooltip sticky>
+                <div style={{ background: 'rgba(0,0,0,0.8)', padding: '5px', color: '#fff' }}>
+                  <div style={{fontWeight: 'bold', color}}>{weather.is_storm ? 'SEVERE STORM' : 'WEATHER ZONE'}</div>
+                  <div>Wind: {weather.wind_speed_kmh.toFixed(1)} km/h</div>
+                </div>
+              </Tooltip>
+            </Rectangle>
+          );
+        })}
         
         {showBuckets && OCEAN_GRIDS.map(grid_id => {
           const row_idx = grid_id.charCodeAt(0) - 65; // A -> 0

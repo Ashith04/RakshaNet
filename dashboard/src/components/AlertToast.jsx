@@ -4,19 +4,24 @@ import { AlertTriangle } from 'lucide-react';
 export default function AlertToast({ latestAlert, onClick }) {
   const [visible, setVisible] = useState(false);
   const [alertData, setAlertData] = useState(null);
+  const isVisibleRef = React.useRef(false);
 
   useEffect(() => {
-    if (latestAlert) {
+    // Only trigger a new toast if one isn't already visible
+    if (latestAlert && !isVisibleRef.current) {
       setAlertData(latestAlert);
       setVisible(true);
-      const timer = setTimeout(() => {
+      isVisibleRef.current = true;
+      
+      setTimeout(() => {
         setVisible(false);
+        isVisibleRef.current = false;
       }, 5000);
-      return () => clearTimeout(timer);
     }
   }, [latestAlert]);
 
   if (!alertData || !visible) return null;
+  const isCritical = alertData.severity === 'critical';
 
   return (
     <div 
@@ -24,9 +29,9 @@ export default function AlertToast({ latestAlert, onClick }) {
       onClick={() => onClick(alertData)}
     >
       <div className="alert-toast-content">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'red' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isCritical ? '#F03A2F' : '#FFB703' }}>
           <AlertTriangle size={20} />
-          <strong style={{ fontSize: '1.1rem' }}>NEW ALERT: {alertData.alert_type.toUpperCase().replace('_', ' ')}</strong>
+          <strong style={{ fontSize: '1.1rem' }}>NEW ALERT: {(alertData.alert_type || 'THREAT').toUpperCase().replace(/_/g, ' ')}</strong>
         </div>
         <div style={{ fontSize: '0.9rem', marginTop: '8px', color: '#333' }}>
           {alertData.description}
@@ -35,11 +40,11 @@ export default function AlertToast({ latestAlert, onClick }) {
       <style>{`
         .alert-toast {
           position: fixed;
-          top: 80px;
+          top: 140px;
           right: 20px;
           background: #FFF;
           border: 2px solid #000;
-          border-left: 6px solid red;
+          border-left: 6px solid ${isCritical ? '#F03A2F' : '#FFB703'};
           padding: 16px 20px;
           color: #000;
           z-index: 9999;
