@@ -37,7 +37,14 @@ single machine** — with zero heavy distributed pipelines.
         │  (Browser)    │
         └───────────────┘
 ```
+## Mock ups
+<img width="1907" height="833" alt="image" src="https://github.com/user-attachments/assets/606be15e-a5f6-45db-9d8a-152b6e19ae32" />
+<img width="1918" height="862" alt="image" src="https://github.com/user-attachments/assets/d50ac3de-8d00-43c0-a269-b3928f951096" />
+<img width="1893" height="847" alt="image" src="https://github.com/user-attachments/assets/1b9bd332-c02b-4f50-b5df-5538cf3fe2a8" />
 
+
+
+``
 ## Components
 
 | Component | Directory | Technology |
